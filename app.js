@@ -6,6 +6,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
+// IMPORTAÇÃO DO MÓDULO DE SOLICITAÇÕES
+import { initAdminRequestPanel } from './admin-requests.js';
+
 // ==========================================
 // 2. CONFIGURAÇÃO
 // ==========================================
@@ -72,6 +75,10 @@ onAuthStateChanged(auth, (user) => {
         if(btnOpenLogin) btnOpenLogin.classList.add('hidden');
         document.getElementById('adminEditHint').classList.remove('hidden');
         document.body.style.paddingBottom = "100px"; 
+        
+        // --- INICIALIZA PAINEL DE APROVAÇÕES DO LÍDER ---
+        initAdminRequestPanel(db);
+        
     } else {
         isAdmin = false;
         adminToolbar.classList.add('hidden');
@@ -175,10 +182,12 @@ async function loadAdminProfile() {
     const user = auth.currentUser;
     if(!user) return;
 
-    inpEmail.value = user.email; // Preenche email do Auth automaticamente
+    if(inpEmail) inpEmail.value = user.email; // Preenche email do Auth automaticamente
     
-    btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Carregando...';
-    btnSaveProfile.disabled = true;
+    if(btnSaveProfile) {
+        btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Carregando...';
+        btnSaveProfile.disabled = true;
+    }
 
     try {
         const docRef = doc(db, "admins", user.uid);
@@ -186,22 +195,23 @@ async function loadAdminProfile() {
 
         if (docSnap.exists()) {
             const data = docSnap.data();
-            inpName.value = data.name || '';
-            inpRole.value = data.role || '';
-            inpUnit.value = data.unit || '';
-            inpPhone.value = data.phone || '';
+            if(inpName) inpName.value = data.name || '';
+            if(inpRole) inpRole.value = data.role || '';
+            if(inpUnit) inpUnit.value = data.unit || '';
+            if(inpPhone) inpPhone.value = data.phone || '';
         } else {
-            // Se não existe perfil ainda, limpa os campos
-            inpName.value = '';
-            inpRole.value = '';
-            inpUnit.value = '';
-            inpPhone.value = '';
+            if(inpName) inpName.value = '';
+            if(inpRole) inpRole.value = '';
+            if(inpUnit) inpUnit.value = '';
+            if(inpPhone) inpPhone.value = '';
         }
     } catch (e) {
         console.error("Erro ao carregar perfil:", e);
     } finally {
-        btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
-        btnSaveProfile.disabled = false;
+        if(btnSaveProfile) {
+            btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
+            btnSaveProfile.disabled = false;
+        }
     }
 }
 
@@ -224,7 +234,6 @@ if(btnSaveProfile) btnSaveProfile.addEventListener('click', async () => {
     try {
         await setDoc(doc(db, "admins", user.uid), profileData, { merge: true });
         toggleProfileModal(false);
-        // Opcional: Mostrar toast de sucesso
     } catch (e) {
         console.error("Erro ao salvar perfil:", e);
         alert("Erro ao salvar perfil.");
@@ -797,9 +806,7 @@ function updateWeekendTable(specificName) {
                             <h4 class="text-sky-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSat}</h4>
                             <div class="flex flex-wrap">${satTags}</div>
                         </div>
-                        ${sunDate ? `<div class="pt-3 border-t border-[#2E3250]">
-                            <h4 class="text-indigo-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSun}</h4>
-                            <div class="flex flex-wrap">${sunTags}</div></div>` : ''}
+                        ${sunDate ? `<div class="pt-3 border-t border-[#2E3250]\">\r\n                            <h4 class=\"text-indigo-500 font-bold text-xs uppercase mb-2 flex items-center gap-2\"><i class=\"fas fa-calendar-day\"></i> ${labelSun}</h4>\r\n                            <div class=\"flex flex-wrap\">${sunTags}</div></div>` : ''}
                     </div>
                 </div>`;
                 container.insertAdjacentHTML('beforeend', cardHTML);
