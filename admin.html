@@ -15,7 +15,8 @@
                         cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250', primary: '#7C3AED', accent: '#F97316' }
                     },
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
+                    animation: { 'fade-in-up': 'fadeInUp 0.5s ease-out forwards' },
+                    keyframes: { fadeInUp: { '0%': { opacity: '0', transform: 'translate(-50%, 20px)' }, '100%': { opacity: '1', transform: 'translate(-50%, 0)' } } }
                 }
             }
         }
@@ -27,23 +28,33 @@
 </head>
 <body class="text-gray-300 relative font-sans transition-all duration-300 antialiased selection:bg-purple-500 selection:text-white bg-[#0F1020]">
 
-    <div id="adminToolbar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-2xl transition-all duration-500 animate-fade-in-up">
-        <div class="bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5">
-            <div class="flex flex-col justify-center">
-                <span class="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-0.5 flex items-center gap-1.5">
-                    <i class="fas fa-shield-alt"></i> Admin Mode
+    <!-- BARRA DE FERRAMENTAS ADMIN (Layout Novo) -->
+    <div id="adminToolbar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-[95%] max-w-3xl transition-all duration-500 animate-fade-in-up">
+        <div class="bg-[#1A1C2E]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-3 pl-6 flex justify-between items-center ring-1 ring-white/5">
+            
+            <!-- ESQUERDA: Info e Status -->
+            <div id="toolbarLeft" class="flex flex-col items-start justify-center gap-1">
+                <span class="text-[10px] font-extrabold text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fas fa-shield-alt text-sm"></i> ADMIN MODE
                 </span>
-                <div class="flex items-center gap-2">
-                    <span id="saveStatusIcon" class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></span>
-                    <span id="saveStatus" class="text-xs text-gray-300 font-medium">Sincronizado</span>
+                <div class="flex items-center gap-2 pl-0.5">
+                    <span id="saveStatusIcon" class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse"></span>
+                    <span id="saveStatus" class="text-xs text-gray-400 font-medium tracking-wide">Sincronizado</span>
                 </div>
             </div>
-            <div class="flex gap-2">
+
+            <!-- DIREITA: Ações (Ordem: Sino -> Gerenciar -> Salvar -> Logout) -->
+            <div id="toolbarRight" class="flex items-center gap-3">
+                <!-- Botões injetados via JS (Sino, Gerenciar) entram aqui antes do Salvar -->
+                
                 <button id="btnSaveCloud" class="group bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center shadow-lg hover:shadow-indigo-500/25 active:scale-95 border border-indigo-500/50">
                     <i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar
                 </button>
-                <button id="btnLogout" class="bg-gray-800 hover:bg-red-900/20 hover:text-red-400 text-gray-400 px-3.5 py-2.5 rounded-xl transition-all active:scale-95 border border-transparent hover:border-red-500/20" title="Sair">
-                    <i class="fas fa-power-off"></i>
+                
+                <div class="h-8 w-[1px] bg-gray-700 mx-1"></div> <!-- Separador -->
+
+                <button id="btnLogout" class="bg-gray-800 hover:bg-red-900/20 hover:text-red-400 text-gray-400 w-10 h-10 flex items-center justify-center rounded-xl transition-all active:scale-95 border border-transparent hover:border-red-500/20 shadow-md" title="Sair">
+                    <i class="fas fa-power-off text-sm"></i>
                 </button>
             </div>
         </div>
@@ -81,7 +92,7 @@
 
         <main>
             <div id="dailyView" class="tab-content active space-y-6">
-                <!-- Conteúdo Diário Igual -->
+                <!-- Conteúdo Diário -->
                 <section class="cronos-card p-6 md:p-8 rounded-3xl relative overflow-hidden">
                     <div class="absolute top-0 right-0 w-64 h-64 bg-purple-600/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
@@ -217,8 +228,6 @@
             <p class="text-xs text-gray-500 font-medium">&copy; 2025</p>
         </footer>
     </div>
-    <!-- Note que agora ele chama o app.js para lógica admin -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
-
