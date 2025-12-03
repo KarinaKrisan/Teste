@@ -34,7 +34,7 @@
     <div class="bg-cronos-card border border-cronos-border rounded-2xl shadow-2xl w-full max-w-md p-8 md:p-10 relative z-10 backdrop-blur-sm">
         <div class="text-center mb-10">
             <h1 class="text-4xl font-extrabold mb-2 text-gradient">CRONOS</h1>
-            <p class="text-sm text-gray-400 font-medium tracking-wide">Acesso Restrito</p>
+            <p class="text-sm text-gray-400 font-medium tracking-wide">Acesso Corporativo</p>
         </div>
 
         <form id="loginPageForm" class="space-y-6">
@@ -42,7 +42,7 @@
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">E-mail</label>
                 <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-envelope text-gray-500"></i></div>
-                    <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="usuario@cronos.com" required>
+                    <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="seu.email@exemplo.com" required>
                 </div>
             </div>
             <div>
@@ -86,70 +86,74 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Função de Redirecionamento
+        // O único Admin Supremo (Hardcoded)
+        const SUPREME_ADMIN = "contatokarinakrisan@gmail.com";
+
         async function redirectUser(user) {
             const loadingText = document.getElementById('loadingText');
-            if(loadingText) loadingText.textContent = "Verificando permissões...";
+            if(loadingText) loadingText.textContent = "Verificando nível de acesso...";
 
-            const adminEmail = "karina.krisan@sitelbra.com.br"; // SEU EMAIL ADMIN AQUI
-            let isAdmin = false;
+            let role = 'collaborator'; // Padrão
+            const userEmail = user.email.toLowerCase();
 
-            // 1. Verifica email direto
-            if (user.email.toLowerCase() === adminEmail.toLowerCase()) {
-                isAdmin = true;
+            // 1. É a Suprema?
+            if (userEmail === SUPREME_ADMIN) {
+                role = 'admin';
             } else {
-                // 2. Verifica coleção admins
+                // 2. Verifica banco de dados de permissões (system_users)
                 try {
-                    const docSnap = await getDoc(doc(db, "admins", user.uid));
-                    if (docSnap.exists()) isAdmin = true;
+                    // O ID do documento é o próprio email
+                    const docSnap = await getDoc(doc(db, "system_users", userEmail));
+                    if (docSnap.exists()) {
+                        role = docSnap.data().role || 'collaborator';
+                    } else {
+                        // Se não estiver cadastrado, decide se bloqueia ou deixa como colaborador
+                        // Aqui deixamos como colaborador padrão
+                        role = 'collaborator';
+                    }
                 } catch (e) { 
-                    console.log("Colaborador detectado (Sem permissão admin):", e); 
+                    console.log("Erro ao checar permissão:", e); 
                 }
             }
 
-            if(loadingText) loadingText.textContent = isAdmin ? "Bem-vindo, Líder!" : "Acessando Portal...";
+            if(loadingText) loadingText.textContent = role === 'admin' ? "Bem-vindo, Admin!" : "Acessando Portal...";
             
-            // Pequeno delay para UX
             setTimeout(() => {
-                if (isAdmin) {
+                if (role === 'admin') {
                     window.location.href = "admin.html";
                 } else {
                     window.location.href = "collaborator.html";
                 }
-            }, 500);
+            }, 800);
         }
 
-        // Listener de Auth (Redirecionamento Automático)
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById('loadingOverlay').classList.remove('hidden');
                 await redirectUser(user);
             } else {
-                // Garante que o loading sai se não tiver user (ex: após logout)
                 document.getElementById('loadingOverlay').classList.add('hidden');
             }
         });
 
-        // Handler do Formulário
         const form = document.getElementById('loginPageForm');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('emailInput').value;
+            const email = document.getElementById('emailInput').value.toLowerCase();
             const pass = document.getElementById('passwordInput').value;
             const btn = document.getElementById('btnLogin');
             const errorDiv = document.getElementById('loginError');
 
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Entrando...';
             errorDiv.classList.add('hidden');
 
             try {
                 await signInWithEmailAndPassword(auth, email, pass);
-                // O onAuthStateChanged vai pegar a mudança e redirecionar
             } catch (error) {
                 console.error(error);
-                let msg = "Erro ao conectar.";
-                if(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
+                let msg = "Erro desconhecido.";
+                if(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') msg = "Dados incorretos.";
                 else if(error.code === 'auth/too-many-requests') msg = "Muitas tentativas. Aguarde.";
                 
                 document.getElementById('errorText').textContent = msg;
