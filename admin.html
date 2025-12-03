@@ -15,15 +15,17 @@
         
         <aside class="hidden md:flex flex-col w-64 bg-[#1A1C2E] border-r border-[#2E3250]">
             <div class="p-6 border-b border-[#2E3250]">
-                <h1 class="text-2xl font-extrabold text-gradient tracking-tight">CRONOS <span class="text-xs text-gray-500 font-medium block">ADMINISTRADOR</span></h1>
+                <h1 class="text-2xl font-extrabold text-gradient tracking-tight">CRONOS <span class="text-xs text-gray-500 font-medium block">ADMIN</span></h1>
             </div>
             <nav class="flex-1 p-4 space-y-2">
                 <a href="#" class="flex items-center gap-3 px-4 py-3 bg-[#7C3AED]/10 text-[#D946EF] rounded-xl border border-[#7C3AED]/20 font-medium transition-colors">
                     <i class="fas fa-chart-pie"></i> Visão Geral
                 </a>
+                
                 <a href="index.html" target="_blank" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
                     <i class="fas fa-calendar-alt"></i> Editar Escala
                 </a>
+
                 <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
                     <i class="fas fa-users"></i> Colaboradores
                 </a>
@@ -36,7 +38,6 @@
         </aside>
 
         <main class="flex-1 overflow-y-auto bg-[#0F1020] p-4 md:p-8 relative">
-            
             <div class="md:hidden flex justify-between items-center mb-6">
                 <h1 class="text-xl font-bold text-white">Painel Admin</h1>
                 <a href="index.html" class="text-sm text-indigo-400">Ir para Escala &rarr;</a>
@@ -65,7 +66,7 @@
                 <div class="p-6 border-b border-[#2E3250] flex justify-between items-center">
                     <div>
                         <h2 class="text-lg font-bold text-white">Central de Solicitações</h2>
-                        <p class="text-xs text-gray-500">Gerencie trocas, folgas e alterações de ponto.</p>
+                        <p class="text-xs text-gray-500">Gerencie trocas, folgas e alterações.</p>
                     </div>
                     <button onclick="openRequestModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors">
                         <i class="fas fa-plus mr-1"></i> Nova Solicitação
@@ -85,26 +86,16 @@
                             </tr>
                         </thead>
                         <tbody id="requestsTableBody">
-                            <tr>
-                                <td colspan="6" class="text-center py-8 text-gray-600 italic">Carregando solicitações...</td>
-                            </tr>
+                            <tr><td colspan="6" class="text-center py-8 text-gray-600 italic">Carregando...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="cronos-card rounded-2xl p-6">
-                    <h3 class="text-md font-bold text-white mb-4">Últimas Atividades</h3>
-                    <ul id="auditLogList" class="space-y-3">
-                        </ul>
-                </div>
-
                 <div class="cronos-card rounded-2xl p-6 flex flex-col">
                     <h3 class="text-md font-bold text-white mb-4">Tipos de Solicitação</h3>
-                    <div class="flex-1 relative min-h-[200px]">
-                        <canvas id="requestsChart"></canvas>
-                    </div>
+                    <div class="flex-1 relative min-h-[200px]"><canvas id="requestsChart"></canvas></div>
                 </div>
             </div>
         </main>
@@ -120,7 +111,7 @@
                 <div>
                     <label class="block text-xs font-bold text-gray-400 mb-1">Colaborador</label>
                     <select id="reqEmployee" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm focus:border-indigo-500 outline-none">
-                        <option value="">Selecione...</option>
+                        <option value="">Carregando...</option>
                     </select>
                 </div>
                 <div>
@@ -133,11 +124,9 @@
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-400 mb-1">Detalhes / Data</label>
-                    <input type="text" id="reqDetails" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none" placeholder="Ex: Dia 15/10 por Dia 16/10">
+                    <input type="text" id="reqDetails" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none" placeholder="Ex: Troca do dia 15 pelo 16">
                 </div>
-                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-2.5 rounded-lg shadow-lg hover:opacity-90 transition-opacity">
-                    Criar Solicitação
-                </button>
+                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-2.5 rounded-lg shadow-lg">Criar Solicitação</button>
             </form>
         </div>
     </div>
