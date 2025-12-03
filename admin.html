@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel Administrativo | Cronos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="styless.css">
+</head>
+<body class="custom-scrollbar text-gray-300">
+
+    <div class="flex h-screen overflow-hidden">
+        
+        <aside class="hidden md:flex flex-col w-64 bg-[#1A1C2E] border-r border-[#2E3250]">
+            <div class="p-6 border-b border-[#2E3250]">
+                <h1 class="text-2xl font-extrabold text-gradient tracking-tight">CRONOS <span class="text-xs text-gray-500 font-medium block">ADMINISTRADOR</span></h1>
+            </div>
+            <nav class="flex-1 p-4 space-y-2">
+                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-[#7C3AED]/10 text-[#D946EF] rounded-xl border border-[#7C3AED]/20 font-medium transition-colors">
+                    <i class="fas fa-chart-pie"></i> Visão Geral
+                </a>
+                <a href="index.html" target="_blank" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
+                    <i class="fas fa-calendar-alt"></i> Editar Escala
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
+                    <i class="fas fa-users"></i> Colaboradores
+                </a>
+            </nav>
+            <div class="p-4 border-t border-[#2E3250]">
+                <button id="adminLogoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors text-sm font-bold">
+                    <i class="fas fa-sign-out-alt"></i> Sair
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto bg-[#0F1020] p-4 md:p-8 relative">
+            
+            <div class="md:hidden flex justify-between items-center mb-6">
+                <h1 class="text-xl font-bold text-white">Painel Admin</h1>
+                <a href="index.html" class="text-sm text-indigo-400">Ir para Escala &rarr;</a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-yellow-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Solicitações Pendentes</p>
+                    <h3 id="kpiPending" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-green-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Aprovações (Mês)</p>
+                    <h3 id="kpiApproved" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-purple-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Trocas de Turno</p>
+                    <h3 id="kpiSwaps" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-blue-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Total Colaboradores</p>
+                    <h3 id="kpiTotalUsers" class="text-3xl font-bold text-white mt-1">--</h3>
+                </div>
+            </div>
+
+            <div class="cronos-card rounded-2xl mb-8">
+                <div class="p-6 border-b border-[#2E3250] flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Central de Solicitações</h2>
+                        <p class="text-xs text-gray-500">Gerencie trocas, folgas e alterações de ponto.</p>
+                    </div>
+                    <button onclick="openRequestModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors">
+                        <i class="fas fa-plus mr-1"></i> Nova Solicitação
+                    </button>
+                </div>
+                
+                <div class="admin-table-container">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Colaborador</th>
+                                <th>Tipo</th>
+                                <th>Detalhes</th>
+                                <th>Status</th>
+                                <th class="text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center py-8 text-gray-600 italic">Carregando solicitações...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="cronos-card rounded-2xl p-6">
+                    <h3 class="text-md font-bold text-white mb-4">Últimas Atividades</h3>
+                    <ul id="auditLogList" class="space-y-3">
+                        </ul>
+                </div>
+
+                <div class="cronos-card rounded-2xl p-6 flex flex-col">
+                    <h3 class="text-md font-bold text-white mb-4">Tipos de Solicitação</h3>
+                    <div class="flex-1 relative min-h-[200px]">
+                        <canvas id="requestsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="requestModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">Nova Solicitação (Admin)</h3>
+                <button onclick="closeRequestModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="newRequestForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Colaborador</label>
+                    <select id="reqEmployee" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm focus:border-indigo-500 outline-none">
+                        <option value="">Selecione...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Tipo</label>
+                    <select id="reqType" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none">
+                        <option value="troca">Troca de Turno</option>
+                        <option value="folga">Solicitação de Folga</option>
+                        <option value="ferias">Marcação de Férias</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Detalhes / Data</label>
+                    <input type="text" id="reqDetails" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none" placeholder="Ex: Dia 15/10 por Dia 16/10">
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-2.5 rounded-lg shadow-lg hover:opacity-90 transition-opacity">
+                    Criar Solicitação
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="admin.js"></script>
+</body>
+</html>
