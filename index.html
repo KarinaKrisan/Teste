@@ -3,179 +3,182 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login Administrativo | Cronos</title>
+    <title>Painel Administrativo | Cronos</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250', primary: '#7C3AED' }
-                    },
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'fade-in': 'fadeIn 0.3s ease-out forwards' },
-                    keyframes: { fadeIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } } }
-                }
-            }
-        }
-    </script>
-    <style>
-        body { background-color: #0F1020; color: #E2E8F0; }
-        .login-input { background-color: #0F1020; border-color: #2E3250; color: white; }
-        .login-input:focus { border-color: #7C3AED; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2); }
-        .btn-gradient { background: linear-gradient(135deg, #7C3AED 0%, #D946EF 50%, #F97316 100%); transition: all 0.3s ease; }
-        .btn-gradient:hover { opacity: 0.9; transform: translateY(-1px); }
-        .text-gradient { background: linear-gradient(to right, #A78BFA, #F472B6, #FB923C); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="styless.css">
 </head>
-<body class="h-screen flex items-center justify-center p-4 relative overflow-hidden">
-    
-    <div class="absolute top-0 left-0 w-full h-full pointer-events-none z-0">
-        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-900/20 rounded-full blur-3xl"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-orange-900/20 rounded-full blur-3xl"></div>
-    </div>
+<body class="custom-scrollbar text-gray-300">
 
-    <div class="bg-cronos-card border border-cronos-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 backdrop-blur-sm">
-        <div class="w-full p-8 md:p-10">
-            <div class="text-center mb-10">
-                <h1 class="text-4xl font-extrabold mb-2 text-gradient">CRONOS</h1>
-                <p class="text-sm text-gray-400 font-medium tracking-wide">Acesso Administrativo</p>
-            </div>
-
-            <form id="loginPageForm" class="space-y-6">
-                <div>
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">E-mail Corporativo</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-envelope text-gray-500"></i></div>
-                        <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="admin@exemplo.com" required>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Senha</label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-lock text-gray-500"></i></div>
-                        <input type="password" id="passwordInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="••••••••" required>
-                    </div>
-                    <div class="flex justify-end mt-2">
-                        <button type="button" id="btnForgotOpen" class="text-xs text-gray-500 hover:text-purple-400 transition-colors font-medium">Esqueceu a senha?</button>
-                    </div>
-                </div>
-
-                <div id="loginError" class="hidden bg-red-900/20 border border-red-500/30 text-red-400 text-sm p-3 rounded-lg flex items-center">
-                    <i class="fas fa-exclamation-circle mr-2"></i><span id="errorText">Erro de autenticação.</span>
-                </div>
-
-                <button type="submit" id="btnLogin" class="w-full btn-gradient text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-2">
-                    <span>Entrar no Painel</span><i class="fas fa-arrow-right"></i>
-                </button>
-            </form>
-
-            <div class="mt-8 text-center border-t border-gray-800 pt-6">
-                <a href="index.html" class="text-sm text-gray-500 hover:text-purple-400 font-medium transition-colors">
-                    <i class="fas fa-arrow-left mr-1"></i> Voltar para Visão Diária (Pública)
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <div id="resetModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 transition-opacity duration-300">
-        <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl shadow-2xl w-full max-w-sm p-6 relative animate-fade-in" onclick="event.stopPropagation()">
-            <div class="text-center mb-6">
-                <div class="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-3 text-purple-400 text-xl"><i class="fas fa-key"></i></div>
-                <h3 class="text-xl font-bold text-white">Recuperar Senha</h3>
-                <p class="text-xs text-gray-400 mt-1">Digite seu e-mail para receber o link.</p>
-            </div>
-            <form id="resetForm" class="space-y-4">
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-envelope text-gray-500"></i></div>
-                    <input type="email" id="resetEmailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="Confirmar e-mail" required>
-                </div>
-                <div id="resetFeedback" class="hidden text-xs p-3 rounded-lg border text-center"></div>
-                <div class="grid grid-cols-2 gap-3 mt-2">
-                    <button type="button" id="btnResetCancel" class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-2.5 rounded-lg border border-gray-700">Cancelar</button>
-                    <button type="submit" id="btnResetSend" class="w-full btn-gradient text-white font-bold py-2.5 rounded-lg shadow-lg">Enviar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
-            authDomain: "dadosescala.firebaseapp.com",
-            projectId: "dadosescala",
-            storageBucket: "dadosescala.firebasestorage.app",
-            messagingSenderId: "117221956502",
-            appId: "1:117221956502:web:e5a7f051daf3306b501bb7"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-
-        // LOGIN -> Vai para ADMIN.HTML
-        document.getElementById('loginPageForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('emailInput').value;
-            const pass = document.getElementById('passwordInput').value;
-            const errorDiv = document.getElementById('loginError');
-            const errorText = document.getElementById('errorText');
-            const btn = document.getElementById('btnLogin');
-
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
-            btn.disabled = true;
-            btn.classList.add('opacity-75');
-            errorDiv.classList.add('hidden');
-
-            try {
-                await signInWithEmailAndPassword(auth, email, pass);
-                window.location.href = "admin.html"; // REDIRECIONAMENTO CORRETO
-            } catch (error) {
-                console.error("Erro login:", error);
-                if(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') errorText.textContent = "Dados incorretos.";
-                else if (error.code === 'auth/too-many-requests') errorText.textContent = "Muitas tentativas. Tente mais tarde.";
-                else errorText.textContent = "Erro ao conectar.";
-                
-                errorDiv.classList.remove('hidden');
-                btn.innerHTML = '<span>Entrar no Painel</span><i class="fas fa-arrow-right"></i>';
-                btn.disabled = false;
-                btn.classList.remove('opacity-75');
-            }
-        });
-
-        // RESET SENHA
-        const modal = document.getElementById('resetModal');
-        const resetFeedback = document.getElementById('resetFeedback');
-        const resetBtnSend = document.getElementById('btnResetSend');
-
-        document.getElementById('btnForgotOpen').addEventListener('click', () => {
-            document.getElementById('resetEmailInput').value = ""; 
-            resetFeedback.classList.add('hidden');
-            modal.classList.remove('hidden');
-        });
-        document.getElementById('btnResetCancel').addEventListener('click', () => { modal.classList.add('hidden'); });
+    <div class="flex h-screen overflow-hidden">
         
-        document.getElementById('resetForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('resetEmailInput').value;
-            resetBtnSend.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            try {
-                await sendPasswordResetEmail(auth, email);
-                resetFeedback.className = "text-xs p-3 rounded-lg border border-green-500/30 bg-green-900/20 text-green-400 block";
-                resetFeedback.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Enviado!';
-                setTimeout(() => { modal.classList.add('hidden'); resetBtnSend.innerHTML = 'Enviar'; }, 3000);
-            } catch (error) {
-                resetFeedback.className = "text-xs p-3 rounded-lg border border-red-500/30 bg-red-900/20 text-red-400 block";
-                resetFeedback.innerHTML = '<i class="fas fa-times-circle mr-1"></i> Erro ao enviar.';
-                resetBtnSend.innerHTML = 'Enviar';
-            }
-        });
-    </script>
+        <aside class="hidden md:flex flex-col w-64 bg-[#1A1C2E] border-r border-[#2E3250]">
+            <div class="p-6 border-b border-[#2E3250]">
+                <h1 class="text-2xl font-extrabold text-gradient tracking-tight">CRONOS <span class="text-xs text-gray-500 font-medium block">ADMIN</span></h1>
+            </div>
+            <nav class="flex-1 p-4 space-y-2">
+                <a href="#" class="flex items-center gap-3 px-4 py-3 bg-[#7C3AED]/10 text-[#D946EF] rounded-xl border border-[#7C3AED]/20 font-medium transition-colors">
+                    <i class="fas fa-chart-pie"></i> Visão Geral
+                </a>
+                
+                <a href="index.html" target="_blank" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
+                    <i class="fas fa-calendar-alt"></i> Editar Escala
+                </a>
+
+                <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-[#2E3250]/50 rounded-xl transition-colors">
+                    <i class="fas fa-users"></i> Colaboradores
+                </a>
+            </nav>
+            <div class="p-4 border-t border-[#2E3250]">
+                <button id="adminLogoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors text-sm font-bold">
+                    <i class="fas fa-sign-out-alt"></i> Sair
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto bg-[#0F1020] p-4 md:p-8 relative">
+            <div class="md:hidden flex justify-between items-center mb-6">
+                <h1 class="text-xl font-bold text-white">Painel Admin</h1>
+                <a href="index.html" class="text-sm text-indigo-400">Ir para Escala &rarr;</a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-yellow-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Solicitações Pendentes</p>
+                    <h3 id="kpiPending" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-green-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Aprovações (Mês)</p>
+                    <h3 id="kpiApproved" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-purple-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Trocas de Turno</p>
+                    <h3 id="kpiSwaps" class="text-3xl font-bold text-white mt-1">0</h3>
+                </div>
+                <div class="cronos-card p-5 rounded-xl border-l-4 border-blue-500">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Total Colaboradores</p>
+                    <h3 id="kpiTotalUsers" class="text-3xl font-bold text-white mt-1">--</h3>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-white border-l-4 border-indigo-500 pl-3">Visão Operacional em Tempo Real</h2>
+                    <span id="currentDateDisplay" class="text-sm font-mono text-gray-400 bg-[#1A1C2E] px-3 py-1 rounded-lg border border-[#2E3250]">--/--</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden flex flex-col h-64">
+                        <div class="bg-green-500/10 border-b border-green-500/20 p-3 flex justify-between items-center">
+                            <h3 class="font-bold text-green-400 text-sm">Trabalhando</h3>
+                            <span id="countWorking" class="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div class="p-3 overflow-y-auto custom-scrollbar flex-1">
+                            <ul id="listWorking" class="space-y-1"></ul>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden flex flex-col h-64">
+                        <div class="bg-fuchsia-500/10 border-b border-fuchsia-500/20 p-3 flex justify-between items-center">
+                            <h3 class="font-bold text-fuchsia-400 text-sm">Exp. Encerrado</h3>
+                            <span id="countOffShift" class="bg-fuchsia-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div class="p-3 overflow-y-auto custom-scrollbar flex-1">
+                            <ul id="listOffShift" class="space-y-1"></ul>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden flex flex-col h-64">
+                        <div class="bg-yellow-500/10 border-b border-yellow-500/20 p-3 flex justify-between items-center">
+                            <h3 class="font-bold text-yellow-400 text-sm">Folga</h3>
+                            <span id="countOff" class="bg-yellow-500 text-gray-900 text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div class="p-3 overflow-y-auto custom-scrollbar flex-1">
+                            <ul id="listOff" class="space-y-1"></ul>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden flex flex-col h-64">
+                        <div class="bg-red-500/10 border-b border-red-500/20 p-3 flex justify-between items-center">
+                            <h3 class="font-bold text-red-400 text-sm">Férias</h3>
+                            <span id="countVacation" class="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div class="p-3 overflow-y-auto custom-scrollbar flex-1">
+                            <ul id="listVacation" class="space-y-1"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="cronos-card rounded-2xl mb-8">
+                <div class="p-6 border-b border-[#2E3250] flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Central de Solicitações</h2>
+                        <p class="text-xs text-gray-500">Gerencie trocas, folgas e alterações.</p>
+                    </div>
+                    <button onclick="openRequestModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors">
+                        <i class="fas fa-plus mr-1"></i> Nova Solicitação
+                    </button>
+                </div>
+                
+                <div class="admin-table-container">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Colaborador</th>
+                                <th>Tipo</th>
+                                <th>Detalhes</th>
+                                <th>Status</th>
+                                <th class="text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <tr><td colspan="6" class="text-center py-8 text-gray-600 italic">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="cronos-card rounded-2xl p-6 flex flex-col">
+                    <h3 class="text-md font-bold text-white mb-4">Tipos de Solicitação</h3>
+                    <div class="flex-1 relative min-h-[200px]"><canvas id="requestsChart"></canvas></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="requestModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white">Nova Solicitação (Admin)</h3>
+                <button onclick="closeRequestModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="newRequestForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Colaborador</label>
+                    <select id="reqEmployee" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm focus:border-indigo-500 outline-none">
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Tipo</label>
+                    <select id="reqType" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none">
+                        <option value="troca">Troca de Turno</option>
+                        <option value="folga">Solicitação de Folga</option>
+                        <option value="ferias">Marcação de Férias</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 mb-1">Detalhes / Data</label>
+                    <input type="text" id="reqDetails" class="w-full bg-[#0F1020] border border-[#2E3250] text-white rounded-lg p-2.5 text-sm outline-none" placeholder="Ex: Troca do dia 15 pelo 16">
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-2.5 rounded-lg shadow-lg">Criar Solicitação</button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="admin.js"></script>
 </body>
 </html>
