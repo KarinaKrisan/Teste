@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, collection, addDoc, query, where, onSnapshot, updateDoc, doc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { getFirestore, collection, addDoc, query, where, onSnapshot, updateDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
@@ -17,27 +17,43 @@ const auth = getAuth(app);
 
 let currentUserData = null;
 
-// --- AUTH GUARD: Colaborador ---
-document.getElementById('btnLogout').addEventListener('click', () => {
-    signOut(auth).then(() => {
-        window.location.href = "index.html"; 
-    });
+// ==================================================
+// 1. LÓGICA DE LOGOUT (Corrigida)
+// ==================================================
+// Espera o site carregar completamente antes de adicionar a função ao botão
+window.addEventListener('DOMContentLoaded', () => {
+    const btnLogout = document.getElementById('btnLogout');
+    if (btnLogout) {
+        btnLogout.addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                window.location.href = "index.html";
+            } catch (error) {
+                console.error("Erro ao sair:", error);
+                alert("Erro ao tentar sair. Tente recarregar a página.");
+            }
+        });
+    }
 });
 
+// ==================================================
+// 2. AUTH GUARD & IDENTIFICAÇÃO
+// ==================================================
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // Fallback: Se não tiver displayName, usa a parte antes do @ do email
-        let nameToUse = user.displayName;
-        if (!nameToUse) {
-            nameToUse = user.email.split('@')[0];
-            // Tenta formatar bonito: 'karina.krisan' -> 'Karina Krisan' (Visual apenas)
-            nameToUse = nameToUse.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+        // Tenta pegar o nome do perfil. Se não tiver, gera a partir do email.
+        let rawName = user.displayName;
+        if (!rawName) {
+            // Ex: "karina.krisan@..." vira "Karina Krisan" visualmente
+            const emailPrefix = user.email.split('@')[0];
+            rawName = emailPrefix.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
         }
 
         currentUserData = {
             uid: user.uid,
             email: user.email,
-            name: nameToUse
+            name: rawName,
+            emailPrefix: user.email.split('@')[0] // Guarda o prefixo original (karina.krisan)
         };
         
         document.getElementById('userDisplayName').textContent = `Olá, ${currentUserData.name}`;
@@ -51,25 +67,27 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- FUNÇÃO MÁGICA DE NORMALIZAÇÃO ---
-// Remove acentos, espaços, pontos e deixa minúsculo para comparar
+// ==================================================
+// 3. FUNÇÃO DE BUSCA PROFUNDA (Normalização)
+// ==================================================
 function normalizeString(str) {
     if(!str) return "";
     return str.toString()
         .toLowerCase()
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove acentos
-        .replace(/[\.\-\s_]/g, ""); // Remove pontos, traços, espaços
+        .replace(/[^a-z0-9]/g, ""); // Remove TUDO que não for letra ou número (espaços, pontos, traços)
 }
 
-// --- 1. Calendário e Escala ---
+// ==================================================
+// 4. CALENDÁRIO E ESCALA
+// ==================================================
 async function initCalendar() {
     const date = new Date();
+    // Ajuste para o seu documento padrão. Se sua escala no banco for de outro mês, ajuste aqui ou na planilha.
     const docId = `escala-${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
     
     const sel = document.getElementById('monthSelector');
-    if(sel) {
-        sel.innerHTML = `<option value="${date.getFullYear()}-${date.getMonth()}">Atual (${date.getMonth()+1}/${date.getFullYear()})</option>`;
-    }
+    if(sel) sel.innerHTML = `<option value="${date.getFullYear()}-${date.getMonth()}">Atual (${date.getMonth()+1}/${date.getFullYear()})</option>`;
 
     try {
         const docRef = doc(db, "escalas", docId);
@@ -77,35 +95,42 @@ async function initCalendar() {
         
         if (docSnap.exists()) {
             const data = docSnap.data();
+            const allKeys = Object.keys(data);
             
-            // BUSCA INTELIGENTE:
-            // 1. Tenta achar exato
-            // 2. Se não achar, normaliza tudo e compara
-            let scheduleKey = Object.keys(data).find(k => k === currentUserData.name);
+            // TENTATIVAS DE ENCONTRAR O USUÁRIO NA LISTA
             
-            if (!scheduleKey) {
-                const myNormalized = normalizeString(currentUserData.name); // ex: karina.krisan -> karinakrisan
-                // Procura nas chaves do banco (ex: "Karina Krisan" -> karinakrisan)
-                scheduleKey = Object.keys(data).find(k => normalizeString(k) === myNormalized);
-                
-                // Extra: Tenta comparar com o email direto também (ex: email karina.krisan@... vs banco Karina Krisan)
-                if (!scheduleKey) {
-                    const emailUser = normalizeString(currentUserData.email.split('@')[0]);
-                    scheduleKey = Object.keys(data).find(k => normalizeString(k) === emailUser);
-                }
+            // 1. Busca Exata
+            let foundKey = allKeys.find(k => k === currentUserData.name);
+            
+            // 2. Busca Normalizada pelo Nome (Ignora pontos e espaços)
+            if (!foundKey) {
+                const myNameNorm = normalizeString(currentUserData.name); // Ex: karinakrisan
+                foundKey = allKeys.find(k => normalizeString(k) === myNameNorm);
             }
-            
-            if (scheduleKey && data[scheduleKey]) {
-                // Se achou pelo "match inteligente", atualizamos o nome visual do usuário para ficar igual à escala
-                if(currentUserData.name !== scheduleKey) {
-                    currentUserData.name = scheduleKey; 
-                    document.getElementById('userDisplayName').textContent = `Olá, ${scheduleKey}`;
+
+            // 3. Busca Normalizada pelo Email (Fallback agressivo)
+            // Ex: karina.krisan@... tenta achar "Karina Krisan"
+            if (!foundKey) {
+                const myEmailNorm = normalizeString(currentUserData.emailPrefix); // Ex: karinakrisan
+                foundKey = allKeys.find(k => normalizeString(k) === myEmailNorm);
+            }
+
+            if (foundKey) {
+                // Sucesso!
+                console.log(`Usuário encontrado! Conectado como: ${currentUserData.email} -> Chave na Escala: ${foundKey}`);
+                if(currentUserData.name !== foundKey) {
+                    document.getElementById('userDisplayName').textContent = `Olá, ${foundKey}`; // Atualiza interface com nome oficial
+                    currentUserData.name = foundKey; // Atualiza dado interno para requests funcionarem
                 }
-                renderCalendar(data[scheduleKey], date);
+                renderCalendar(data[foundKey], date);
             } else {
-                showToast("Sua escala não foi encontrada. Verifique se seu nome está na planilha.");
-                document.getElementById('myCalendarGrid').innerHTML = '<div class="col-span-7 text-center py-10 text-gray-500">Escala não encontrada para este usuário.</div>';
+                // Falha
+                console.warn("Nomes disponíveis no banco:", allKeys);
+                showToast(`Escala não encontrada. Buscamos por: "${currentUserData.name}" ou "${currentUserData.emailPrefix}".`);
+                document.getElementById('myCalendarGrid').innerHTML = '<div class="col-span-7 text-center py-10 text-gray-500 text-xs">Escala não encontrada.<br>Verifique se o nome no banco de dados corresponde ao seu e-mail.</div>';
             }
+        } else {
+            showToast("Nenhuma escala publicada para este mês.");
         }
     } catch (e) {
         console.error("Erro escala:", e);
@@ -124,16 +149,12 @@ function renderCalendar(userScheduleData, dateObj) {
         const isWeekend = new Date(dateObj.getFullYear(), dateObj.getMonth(), d).getDay() % 6 === 0;
         let status = isWeekend ? 'F' : 'T'; 
         
-        // Tenta ler calculatedSchedule (versão processada)
         if (userScheduleData.calculatedSchedule && userScheduleData.calculatedSchedule[d-1]) {
             status = userScheduleData.calculatedSchedule[d-1];
-        } 
-        // Fallback para leitura bruta (T array ou F array)
-        else {
+        } else {
             if (userScheduleData.T && Array.isArray(userScheduleData.T) && userScheduleData.T.includes(d)) status = 'T';
             if (userScheduleData.F && Array.isArray(userScheduleData.F) && userScheduleData.F.includes(d)) status = 'F';
             
-            // Tratamento especial para string "segunda a sexta"
             if (typeof userScheduleData.T === 'string' && /segunda a sexta/i.test(userScheduleData.T)) {
                 if (!isWeekend) status = 'T';
             }
@@ -158,7 +179,9 @@ function renderCalendar(userScheduleData, dateObj) {
     }
 }
 
-// --- 2. Solicitações ---
+// ==================================================
+// 5. SOLICITAÇÕES
+// ==================================================
 const formShift = document.getElementById('formShiftSwap');
 if(formShift) formShift.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -176,10 +199,7 @@ if(formShift) formShift.addEventListener('submit', async (e) => {
         });
         window.closeModal('shiftSwapModal');
         showToast("Solicitação enviada para aprovação do líder!");
-    } catch (error) {
-        console.error(error);
-        showToast("Erro ao enviar solicitação.");
-    }
+    } catch (error) { console.error(error); showToast("Erro ao enviar solicitação."); }
 });
 
 const formPeer = document.getElementById('formPeerSwap');
@@ -190,7 +210,6 @@ if(formPeer) formPeer.addEventListener('submit', async (e) => {
     const peerName = document.getElementById('peerSelect').value;
 
     if(!peerName) return;
-
     try {
         await addDoc(collection(db, "requests"), {
             type: 'day_off_swap',
@@ -202,17 +221,15 @@ if(formPeer) formPeer.addEventListener('submit', async (e) => {
         });
         window.closeModal('dayOffSwapModal');
         showToast(`Solicitação enviada para ${peerName}. Aguardando aceite.`);
-    } catch (error) {
-        console.error(error);
-        showToast("Erro ao enviar.");
-    }
+    } catch (error) { console.error(error); showToast("Erro ao enviar."); }
 });
 
-// --- 3. Listeners ---
+// ==================================================
+// 6. LISTENERS E HELPERS
+// ==================================================
 let currentPeerRequestDocId = null;
 
 function listenToPeerRequests() {
-    // Escuta onde o "target.name" é igual ao meu nome
     const q = query(
         collection(db, "requests"), 
         where("target.name", "==", currentUserData.name), 
@@ -226,10 +243,8 @@ function listenToPeerRequests() {
         if (!snapshot.empty) {
             const docData = snapshot.docs[0].data();
             currentPeerRequestDocId = snapshot.docs[0].id;
-            
             document.getElementById('peerRequestText').innerHTML = 
                 `<strong class="text-white">${docData.requester.name}</strong> propôs trocar a folga dele(a) do dia <span class="text-purple-400 font-mono">${formatDate(docData.details.requesterDate)}</span> pela sua do dia <span class="text-orange-400 font-mono">${formatDate(docData.details.targetDate)}</span>.`;
-            
             container.classList.remove('hidden');
         } else {
             container.classList.add('hidden');
@@ -242,8 +257,7 @@ const btnAccept = document.getElementById('btnAcceptPeer');
 if(btnAccept) btnAccept.addEventListener('click', async () => {
     if(!currentPeerRequestDocId) return;
     try {
-        const ref = doc(db, "requests", currentPeerRequestDocId);
-        await updateDoc(ref, { 
+        await updateDoc(doc(db, "requests", currentPeerRequestDocId), { 
             status: 'pending_leader',
             'target.uid': currentUserData.uid, 
             peerAcceptedAt: new Date().toISOString()
@@ -256,58 +270,27 @@ const btnDeny = document.getElementById('btnDenyPeer');
 if(btnDeny) btnDeny.addEventListener('click', async () => {
     if(!currentPeerRequestDocId) return;
     try {
-        const ref = doc(db, "requests", currentPeerRequestDocId);
-        await updateDoc(ref, { status: 'rejected' });
+        await updateDoc(doc(db, "requests", currentPeerRequestDocId), { status: 'rejected' });
         showToast("Solicitação recusada.");
     } catch(e) { console.error(e); }
 });
 
-// --- 4. Histórico ---
 function loadMyRequests() {
-    const q = query(
-        collection(db, "requests"),
-        where("requester.uid", "==", currentUserData.uid)
-    );
-    
+    const q = query(collection(db, "requests"), where("requester.uid", "==", currentUserData.uid));
     onSnapshot(q, (snapshot) => {
         const list = document.getElementById('myRequestsList');
         if(!list) return;
         list.innerHTML = '';
-        if (snapshot.empty) {
-            list.innerHTML = '<div class="text-center py-4 text-gray-600 text-xs">Sem histórico recente.</div>';
-            return;
-        }
-
+        if (snapshot.empty) { list.innerHTML = '<div class="text-center py-4 text-gray-600 text-xs">Sem histórico recente.</div>'; return; }
         snapshot.forEach(docSnap => {
             const req = docSnap.data();
-            let statusColor = 'text-yellow-500';
-            let statusText = 'Pendente';
-            let icon = 'fa-clock';
-
-            if(req.status === 'pending_peer') { statusText = 'Aguardando Colega'; statusColor = 'text-orange-400'; }
-            else if(req.status === 'pending_leader') { statusText = 'Em Análise (Líder)'; statusColor = 'text-blue-400'; }
-            else if(req.status === 'approved') { statusText = 'Aprovado'; statusColor = 'text-green-400'; icon='fa-check-circle'; }
-            else if(req.status === 'rejected') { statusText = 'Recusado'; statusColor = 'text-red-400'; icon='fa-times-circle'; }
-
-            const typeLabel = req.type === 'shift_change' ? 'Troca de Turno' : `Troca com ${req.target.name}`;
-
-            list.innerHTML += `
-                <div class="bg-[#161828] p-3 rounded-xl border border-[#2E3250] flex justify-between items-center">
-                    <div>
-                        <p class="text-xs font-bold text-gray-300">${typeLabel}</p>
-                        <p class="text-[10px] text-gray-500">${new Date(req.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <div class="flex items-center gap-2 ${statusColor}">
-                        <span class="text-[10px] font-bold uppercase tracking-wider">${statusText}</span>
-                        <i class="fas ${icon}"></i>
-                    </div>
-                </div>
-            `;
+            let statusText = req.status === 'pending_peer' ? 'Aguardando Colega' : req.status === 'pending_leader' ? 'Em Análise' : req.status === 'approved' ? 'Aprovado' : 'Recusado';
+            let color = req.status === 'approved' ? 'text-green-400' : req.status === 'rejected' ? 'text-red-400' : 'text-yellow-500';
+            list.innerHTML += `<div class="bg-[#161828] p-3 rounded-xl border border-[#2E3250] flex justify-between items-center mb-2"><div><p class="text-xs font-bold text-gray-300">${req.type==='shift_change'?'Troca de Turno':'Troca com '+req.target.name}</p></div><div class="${color} text-[10px] font-bold uppercase">${statusText}</div></div>`;
         });
     });
 }
 
-// Helpers
 async function populatePeerSelect() {
     const sel = document.getElementById('peerSelect');
     if(!sel) return;
@@ -319,27 +302,13 @@ async function populatePeerSelect() {
         sel.innerHTML = '<option value="">Selecione...</option>';
         names.forEach(n => {
             if(n !== currentUserData.name) {
-                const opt = document.createElement('option');
-                opt.value = n;
-                opt.textContent = n;
-                sel.appendChild(opt);
+                const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt);
             }
         });
     }
 }
 
-function formatDate(dateStr) {
-    if(!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}`;
-}
-
-function showToast(msg) {
-    const t = document.getElementById('toast');
-    if(!t) return;
-    document.getElementById('toastMsg').textContent = msg;
-    t.classList.remove('translate-y-20', 'opacity-0');
-    setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 4000);
-}
+function formatDate(dateStr) { if(!dateStr) return ''; const [y, m, d] = dateStr.split('-'); return `${d}/${m}`; }
+function showToast(msg) { const t = document.getElementById('toast'); if(!t) return; document.getElementById('toastMsg').textContent = msg; t.classList.remove('translate-y-20', 'opacity-0'); setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 4000); }
 
 
