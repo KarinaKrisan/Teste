@@ -1,16 +1,13 @@
-// app.js - Cosmic Dark Edition (Rounded) - Admin Management
-// =================================================================
-// LÓGICA PRINCIPAL DO PAINEL ADMINISTRATIVO
-// =================================================================
-
+// app.js - Cosmic Dark Edition (Rounded)
+// ==========================================
+// 1. IMPORTAÇÕES FIREBASE (WEB SDK)
+// ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-// Importa o módulo de aprovações (certifique-se que o arquivo admin-requests.js está na pasta)
-import { initAdminRequestPanel } from './admin-requests.js';
 
 // ==========================================
-// 1. CONFIGURAÇÃO FIREBASE
+// 2. CONFIGURAÇÃO
 // ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
@@ -26,7 +23,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 // ==========================================
-// 2. ESTADO GLOBAL
+// 3. ESTADO
 // ==========================================
 let isAdmin = false;
 let hasUnsavedChanges = false;
@@ -41,7 +38,6 @@ const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho
 const systemYear = currentDateObj.getFullYear();
 const systemMonth = currentDateObj.getMonth(); 
 
-// Meses disponíveis para navegação
 const availableMonths = [
     { year: 2025, month: 10 }, { year: 2025, month: 11 }, 
     { year: 2026, month: 0 }, { year: 2026, month: 1 }, { year: 2026, month: 2 }, 
@@ -50,287 +46,75 @@ const availableMonths = [
     { year: 2026, month: 9 }, { year: 2026, month: 10 }, { year: 2026, month: 11 }  
 ];
 
-// Seleciona o mês atual ou o último disponível
 let selectedMonthObj = availableMonths.find(m => m.year === systemYear && m.month === systemMonth) || availableMonths[availableMonths.length-1];
 
-// Mapa de Status
-const statusMap = { 
-    'T':'Trabalhando',
-    'F':'Folga',
-    'FS':'Folga Sáb',
-    'FD':'Folga Dom',
-    'FE':'Férias',
-    'OFF-SHIFT':'Exp.Encerrado', 
-    'F_EFFECTIVE': 'Exp.Encerrado' 
-};
+const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga Dom','FE':'Férias','OFF-SHIFT':'Exp.Encerrado', 'F_EFFECTIVE': 'Exp.Encerrado' };
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
 // ==========================================
-// 3. AUTENTICAÇÃO E SEGURANÇA
+// 4. AUTH & UI LOGIC
 // ==========================================
 const adminToolbar = document.getElementById('adminToolbar');
+const btnOpenLogin = document.getElementById('btnOpenLogin');
 const btnLogout = document.getElementById('btnLogout');
 
-// --- SUPER ADMIN (Hardcoded para segurança máxima) ---
-const SUPREME_ADMIN = "contatokarinakrisan@gmail.com";
-
 if(btnLogout) btnLogout.addEventListener('click', () => {
-    signOut(auth).then(() => window.location.href = "index.html");
+    signOut(auth);
+    window.location.reload();
 });
 
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, (user) => {
     if (user) {
-        let serverIsAdmin = false;
-        const userEmail = user.email.toLowerCase();
-
-        // 1. Verifica se é a Suprema
-        if (userEmail === SUPREME_ADMIN) {
-            serverIsAdmin = true;
-        } else {
-             // 2. Checa coleção de usuários autorizados no Firestore
-             try {
-                // O ID do documento em 'system_users' é o próprio email
-                const docSnap = await getDoc(doc(db, "system_users", userEmail));
-                if(docSnap.exists() && docSnap.data().role === 'admin') {
-                    serverIsAdmin = true;
-                }
-             } catch(e) { 
-                 console.error("Erro ao verificar admin:", e); 
-             }
-        }
-
-        if (serverIsAdmin) {
-            isAdmin = true;
-            adminToolbar.classList.remove('hidden');
-            document.body.style.paddingBottom = "100px";
-            
-            // Adiciona o botão de gestão de time na barra
-            addTeamManagementButton();
-            
-            // Inicia os submódulos
-            initAdminRequestPanel(db); 
-            updateDailyView();
-            initSelect();
-            loadDataFromCloud();
-        } else {
-            // Se logou mas não é admin, manda para a área do colaborador
-            window.location.href = "collaborator.html";
-        }
+        isAdmin = true;
+        adminToolbar.classList.remove('hidden');
+        if(btnOpenLogin) btnOpenLogin.classList.add('hidden');
+        document.getElementById('adminEditHint').classList.remove('hidden');
+        document.body.style.paddingBottom = "100px"; 
     } else {
-        // Se não está logado, volta para o login
-        window.location.href = "index.html";
+        isAdmin = false;
+        adminToolbar.classList.add('hidden');
+        if(btnOpenLogin) btnOpenLogin.classList.remove('hidden');
+        document.getElementById('adminEditHint').classList.add('hidden');
+        document.body.style.paddingBottom = "0";
     }
+    updateDailyView();
+    const sel = document.getElementById('employeeSelect');
+    if(sel && sel.value) updatePersonalView(sel.value);
 });
 
 // ==========================================
-// 4. GESTÃO DE USUÁRIOS (NOVA FUNCIONALIDADE)
+// 5. FIRESTORE DATA
 // ==========================================
-function addTeamManagementButton() {
-    const container = document.querySelector('#adminToolbar > div');
-    // Evita duplicar o botão
-    if(document.getElementById('btnManageTeam')) return;
-
-    const btn = document.createElement('button');
-    btn.id = 'btnManageTeam';
-    btn.className = 'group bg-purple-600 hover:bg-purple-500 text-white px-3 py-2.5 rounded-xl font-bold text-sm transition-all ml-2 shadow-lg flex items-center justify-center';
-    btn.innerHTML = '<i class="fas fa-users-cog"></i>';
-    btn.title = "Gerenciar Acessos";
-    btn.onclick = openTeamModal;
-    
-    // Inserir antes dos botões de salvar/sair para ficar acessível
-    const actionsDiv = container.querySelector('.flex.gap-2');
-    if(actionsDiv) {
-        actionsDiv.insertBefore(btn, actionsDiv.firstChild);
-    }
-
-    // Cria o Modal no DOM se não existir
-    createTeamModal();
-}
-
-function createTeamModal() {
-    // Evita recriar o modal se já existir
-    if(document.getElementById('teamModal')) return;
-
-    const modalHTML = `
-    <div id="teamModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl w-full max-w-2xl flex flex-col shadow-2xl overflow-hidden max-h-[85vh]">
-            <div class="p-6 border-b border-[#2E3250] flex justify-between items-center bg-[#0F1020]/50">
-                <div>
-                    <h2 class="text-xl font-bold text-white">Gerenciar Acessos</h2>
-                    <p class="text-xs text-gray-400">Cadastre e defina permissões de acesso ao sistema.</p>
-                </div>
-                <button onclick="document.getElementById('teamModal').classList.add('hidden')" class="text-gray-500 hover:text-white transition-colors"><i class="fas fa-times text-xl"></i></button>
-            </div>
-            
-            <div class="p-6 border-b border-[#2E3250] bg-[#161828]">
-                <form id="addUserForm" class="flex flex-col md:flex-row gap-3">
-                    <input type="email" id="newEmail" placeholder="E-mail do colaborador" class="flex-1 bg-[#0F1020] border border-[#2E3250] rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500 placeholder-gray-600" required>
-                    <select id="newRole" class="bg-[#0F1020] border border-[#2E3250] rounded-lg px-4 py-2 text-white outline-none focus:border-purple-500 cursor-pointer">
-                        <option value="collaborator">Colaborador</option>
-                        <option value="admin">Administrador</option>
-                    </select>
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg flex items-center justify-center gap-2 whitespace-nowrap">
-                        <i class="fas fa-plus"></i> Adicionar
-                    </button>
-                </form>
-            </div>
-
-            <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="text-xs font-bold text-gray-500 uppercase border-b border-[#2E3250]">
-                            <th class="pb-3 pl-2">E-mail</th>
-                            <th class="pb-3">Permissão</th>
-                            <th class="pb-3 text-right pr-2">Ação</th>
-                        </tr>
-                    </thead>
-                    <tbody id="usersTableBody" class="text-sm">
-                        <!-- Lista Inserida via JS -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-    // Lógica de envio do formulário de novo usuário
-    document.getElementById('addUserForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('newEmail').value.toLowerCase().trim();
-        const role = document.getElementById('newRole').value;
-        const btn = e.target.querySelector('button');
-        
-        // Bloqueia botão durante envio
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-        try {
-            // Salva no Firestore usando o email como ID do documento
-            await setDoc(doc(db, "system_users", email), {
-                email: email,
-                role: role,
-                addedAt: new Date().toISOString(),
-                addedBy: auth.currentUser.email
-            });
-            document.getElementById('newEmail').value = ''; // Limpa campo
-            loadUsersList(); // Recarrega lista visualmente
-        } catch(err) {
-            console.error(err);
-            alert("Erro ao adicionar usuário. Verifique sua conexão e permissões.");
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-plus"></i> Adicionar';
-        }
-    });
-}
-
-async function openTeamModal() {
-    document.getElementById('teamModal').classList.remove('hidden');
-    loadUsersList();
-}
-
-async function loadUsersList() {
-    const tbody = document.getElementById('usersTableBody');
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-gray-500 flex flex-col gap-2"><i class="fas fa-circle-notch fa-spin"></i> Carregando lista...</td></tr>';
-
-    try {
-        const querySnapshot = await getDocs(collection(db, "system_users"));
-        tbody.innerHTML = '';
-        
-        // 1. Adiciona o Admin Supremo manualmente na lista visual (para constar)
-        const supremeRow = `
-            <tr class="border-b border-[#2E3250]/50 hover:bg-[#2E3250]/30 transition-colors group">
-                <td class="py-3 pl-2 font-mono text-purple-300 font-bold flex items-center gap-2">
-                    ${SUPREME_ADMIN} 
-                    <span class="text-[9px] bg-purple-900/50 px-1.5 py-0.5 rounded border border-purple-500/30 text-purple-200">SUPREMO</span>
-                </td>
-                <td class="py-3"><span class="text-[10px] font-bold text-green-400 uppercase tracking-wider">Acesso Total</span></td>
-                <td class="py-3 text-right pr-2 text-gray-600"><i class="fas fa-lock opacity-50"></i></td>
-            </tr>
-        `;
-        tbody.insertAdjacentHTML('beforeend', supremeRow);
-
-        // 2. Adiciona usuários do banco
-        if(querySnapshot.empty) {
-            tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="3" class="text-center py-4 text-gray-600 italic text-xs">Nenhum outro usuário cadastrado.</td></tr>');
-        }
-
-        querySnapshot.forEach((docSnap) => {
-            const u = docSnap.data();
-            const isAdm = u.role === 'admin';
-            
-            // Define estilos baseados no cargo
-            const badgeClass = isAdm 
-                ? 'bg-purple-900/20 text-purple-400 border-purple-500/30' 
-                : 'bg-blue-900/10 text-blue-400 border-blue-500/20';
-            
-            const roleLabel = isAdm ? 'Administrador' : 'Colaborador';
-
-            const row = `
-            <tr class="border-b border-[#2E3250]/50 hover:bg-[#2E3250]/30 transition-colors group">
-                <td class="py-3 pl-2 text-gray-300 font-mono text-xs md:text-sm">${u.email}</td>
-                <td class="py-3">
-                    <span class="text-[10px] font-bold px-2 py-1 rounded border ${badgeClass} uppercase tracking-wider">
-                        ${roleLabel}
-                    </span>
-                </td>
-                <td class="py-3 text-right pr-2">
-                    <button onclick="window.deleteUser('${u.email}')" class="text-gray-600 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-all" title="Remover Acesso">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </td>
-            </tr>`;
-            tbody.insertAdjacentHTML('beforeend', row);
-        });
-    } catch(e) {
-        console.error(e);
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-red-400 text-xs">Erro ao carregar lista de usuários.</td></tr>';
-    }
-}
-
-// Torna a função global para ser acessada pelo onclick do botão na tabela
-window.deleteUser = async (email) => {
-    if(!confirm(`Tem certeza que deseja remover o acesso de: ${email}?`)) return;
-    try {
-        await deleteDoc(doc(db, "system_users", email));
-        loadUsersList(); // Atualiza a tabela
-    } catch(e) { 
-        console.error(e);
-        alert("Erro ao remover usuário."); 
-    }
-};
-
-
-// ==========================================
-// 5. FIRESTORE DATA (Carregar/Salvar Escala)
-// ==========================================
-
 async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     try {
         const docRef = doc(db, "escalas", docId);
         const docSnap = await getDoc(docRef);
+
         if (docSnap.exists()) {
             rawSchedule = docSnap.data();
             processScheduleData(); 
             updateDailyView();
             initSelect();
         } else {
-            console.log("Nenhum documento de escala encontrado para este mês.");
+            console.log("Nenhum documento encontrado.");
             rawSchedule = {}; 
             processScheduleData();
             updateDailyView();
         }
-    } catch (e) { console.error("Erro loadData:", e); }
+    } catch (e) {
+        console.error("Erro ao baixar dados:", e);
+    }
 }
 
 async function saveToCloud() {
     if(!isAdmin) return;
     const btn = document.getElementById('btnSaveCloud');
+    const status = document.getElementById('saveStatus');
+    const statusIcon = document.getElementById('saveStatusIcon');
     
-    // Feedback visual de carregamento
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> ...';
     btn.classList.add('opacity-75', 'cursor-not-allowed');
     
@@ -339,44 +123,126 @@ async function saveToCloud() {
     try {
         await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
         hasUnsavedChanges = false;
-        
-        // Feedback de sucesso
-        btn.innerHTML = '<i class="fas fa-check mr-2"></i> Salvo';
-        btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
-        btn.classList.add('bg-green-600', 'hover:bg-green-500');
-        
-        const status = document.getElementById('saveStatus');
-        if(status) {
-            status.textContent = "Sincronizado";
-            status.className = "text-xs text-gray-300 font-medium";
-        }
-
+        status.textContent = "Sincronizado";
+        status.className = "text-xs text-gray-300 font-medium transition-colors";
+        if(statusIcon) statusIcon.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]";
         setTimeout(() => {
             btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar';
-            btn.classList.remove('bg-green-600', 'hover:bg-green-500', 'opacity-75', 'cursor-not-allowed');
-            btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
-        }, 1500);
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }, 1000);
     } catch (e) {
-        console.error(e);
-        btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro';
-        alert("Erro ao salvar dados no servidor.");
+        console.error("Erro ao salvar:", e);
+        alert("Erro ao salvar!");
+        btn.innerHTML = '<i class="fas fa-exclamation-circle"></i> Erro';
     }
 }
 
-// Listener para o botão de salvar
-if(document.getElementById('btnSaveCloud')) {
-    document.getElementById('btnSaveCloud').addEventListener('click', saveToCloud);
-}
+document.getElementById('btnSaveCloud').addEventListener('click', saveToCloud);
 
 // ==========================================
-// 6. PROCESSAMENTO DE ESCALA
+// 5.1 ADMIN PROFILE LOGIC (MEU PERFIL)
+// ==========================================
+const profileModal = document.getElementById('profileModal');
+const btnOpenProfile = document.getElementById('btnOpenProfile');
+const btnCloseProfile = document.getElementById('btnCloseProfile');
+const btnCancelProfile = document.getElementById('btnCancelProfile');
+const btnSaveProfile = document.getElementById('btnSaveProfile');
+
+// Inputs do Modal
+const inpName = document.getElementById('profName');
+const inpEmail = document.getElementById('profEmail');
+const inpRole = document.getElementById('profRole');
+const inpUnit = document.getElementById('profUnit');
+const inpPhone = document.getElementById('profPhone');
+
+function toggleProfileModal(show) {
+    if(show) {
+        profileModal.classList.remove('hidden');
+        loadAdminProfile();
+    } else {
+        profileModal.classList.add('hidden');
+    }
+}
+
+if(btnOpenProfile) btnOpenProfile.addEventListener('click', () => toggleProfileModal(true));
+if(btnCloseProfile) btnCloseProfile.addEventListener('click', () => toggleProfileModal(false));
+if(btnCancelProfile) btnCancelProfile.addEventListener('click', () => toggleProfileModal(false));
+if(profileModal) profileModal.addEventListener('click', (e) => {
+    if(e.target === profileModal) toggleProfileModal(false);
+});
+
+async function loadAdminProfile() {
+    const user = auth.currentUser;
+    if(!user) return;
+
+    inpEmail.value = user.email; // Preenche email do Auth automaticamente
+    
+    btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Carregando...';
+    btnSaveProfile.disabled = true;
+
+    try {
+        const docRef = doc(db, "admins", user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            inpName.value = data.name || '';
+            inpRole.value = data.role || '';
+            inpUnit.value = data.unit || '';
+            inpPhone.value = data.phone || '';
+        } else {
+            // Se não existe perfil ainda, limpa os campos
+            inpName.value = '';
+            inpRole.value = '';
+            inpUnit.value = '';
+            inpPhone.value = '';
+        }
+    } catch (e) {
+        console.error("Erro ao carregar perfil:", e);
+    } finally {
+        btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
+        btnSaveProfile.disabled = false;
+    }
+}
+
+if(btnSaveProfile) btnSaveProfile.addEventListener('click', async () => {
+    const user = auth.currentUser;
+    if(!user) return;
+
+    const profileData = {
+        name: inpName.value,
+        email: user.email,
+        role: inpRole.value,
+        unit: inpUnit.value,
+        phone: inpPhone.value,
+        updatedAt: new Date().toISOString()
+    };
+
+    btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
+    btnSaveProfile.disabled = true;
+
+    try {
+        await setDoc(doc(db, "admins", user.uid), profileData, { merge: true });
+        toggleProfileModal(false);
+        // Opcional: Mostrar toast de sucesso
+    } catch (e) {
+        console.error("Erro ao salvar perfil:", e);
+        alert("Erro ao salvar perfil.");
+    } finally {
+        btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
+        btnSaveProfile.disabled = false;
+    }
+});
+
+
+// ==========================================
+// 6. DATA PROCESSING
 // ==========================================
 function generate5x2ScheduleDefaultForMonth(monthObj) {
     const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
     const arr = [];
     for (let d=1; d<=totalDays; d++){
         const dow = new Date(monthObj.year, monthObj.month, d).getDay();
-        // 0=Domingo, 6=Sábado -> Folga (F), senão Trabalho (T)
         arr.push((dow===0||dow===6) ? 'F' : 'T');
     }
     return arr;
@@ -385,7 +251,6 @@ function generate5x2ScheduleDefaultForMonth(monthObj) {
 function parseDayListForMonth(dayString, monthObj) {
     if (!dayString) return [];
     if (Array.isArray(dayString)) return dayString; 
-    
     const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
     const days = new Set();
     const normalized = String(dayString).replace(/\b(at[eé]|até|a)\b/gi,' a ').replace(/–|—/g,'-').replace(/\s+/g,' ').trim();
@@ -393,32 +258,15 @@ function parseDayListForMonth(dayString, monthObj) {
 
     parts.forEach(part=>{
         const simple = part.match(/^(\d{1,2})-(\d{1,2})$/);
-        if (simple) { 
-            for(let x=parseInt(simple[1]); x<=parseInt(simple[2]); x++) 
-                if(x>=1 && x<=totalDays) days.add(x); 
-            return; 
-        }
-        
+        if (simple) { for(let x=parseInt(simple[1]); x<=parseInt(simple[2]); x++) if(x>=1 && x<=totalDays) days.add(x); return; }
         const number = part.match(/^(\d{1,2})$/);
-        if (number) { 
-            const v=parseInt(number[1]); 
-            if(v>=1 && v<=totalDays) days.add(v); 
-            return; 
-        }
-        
+        if (number) { const v=parseInt(number[1]); if(v>=1 && v<=totalDays) days.add(v); return; }
         if (/fins? de semana|fim de semana/i.test(part)) {
-            for (let d=1; d<=totalDays; d++){ 
-                const dow = new Date(monthObj.year, monthObj.month, d).getDay(); 
-                if (dow===0||dow===6) days.add(d); 
-            }
+            for (let d=1; d<=totalDays; d++){ const dow = new Date(monthObj.year, monthObj.month, d).getDay(); if (dow===0||dow===6) days.add(d); }
             return;
         }
-        
         if (/segunda a sexta/i.test(part)) {
-            for (let d=1; d<=totalDays; d++){ 
-                const dow = new Date(monthObj.year, monthObj.month, d).getDay(); 
-                if (dow>=1 && dow<=5) days.add(d); 
-            }
+            for (let d=1; d<=totalDays; d++){ const dow = new Date(monthObj.year, monthObj.month, d).getDay(); if (dow>=1 && dow<=5) days.add(d); }
             return;
         }
     });
@@ -427,33 +275,24 @@ function parseDayListForMonth(dayString, monthObj) {
 
 function buildFinalScheduleForMonth(employeeData, monthObj) {
     const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
-    
-    // Se já existe escala calculada e salva (edição manual), usa ela
     if (employeeData.calculatedSchedule && Array.isArray(employeeData.calculatedSchedule)) return employeeData.calculatedSchedule;
 
     const schedule = new Array(totalDays).fill(null);
     let tArr = [];
-    
-    // Processa dias de trabalho base
-    if(typeof employeeData.T === 'string' && /segunda a sexta/i.test(employeeData.T)) {
-        tArr = generate5x2ScheduleDefaultForMonth(monthObj);
-    } else if(Array.isArray(employeeData.T)) {
+    if(typeof employeeData.T === 'string' && /segunda a sexta/i.test(employeeData.T)) tArr = generate5x2ScheduleDefaultForMonth(monthObj);
+    else if(Array.isArray(employeeData.T)) {
         const arr = new Array(totalDays).fill('F');
         employeeData.T.forEach(x => { if(typeof x === 'number') arr[x-1] = 'T'; });
         tArr = arr;
     }
 
-    // Processa exceções (Férias, Folgas)
     const vacDays = parseDayListForMonth(employeeData.FE, monthObj);
     vacDays.forEach(d => { if (d>=1 && d<=totalDays) schedule[d-1] = 'FE'; });
-    
     const fsDays = parseDayListForMonth(employeeData.FS, monthObj);
     fsDays.forEach(d => { if(schedule[d-1] !== 'FE') schedule[d-1] = 'FS'; });
-    
     const fdDays = parseDayListForMonth(employeeData.FD, monthObj);
     fdDays.forEach(d => { if(schedule[d-1] !== 'FE') schedule[d-1] = 'FD'; });
 
-    // Preenche buracos
     for(let i=0; i<totalDays; i++) {
         if(!schedule[i]) {
             if(tArr[i] === 'T') schedule[i] = 'T';
@@ -471,11 +310,9 @@ function processScheduleData() {
         scheduleData[name] = { info: rawSchedule[name], schedule: finalArr };
         rawSchedule[name].calculatedSchedule = finalArr;
     });
-    
-    // Configura slider
+    const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
     const slider = document.getElementById('dateSlider');
     if (slider) {
-        const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
         slider.max = totalDays;
         document.getElementById('sliderMaxLabel').textContent = `Dia ${totalDays}`;
         if (currentDay > totalDays) currentDay = totalDays;
@@ -484,7 +321,7 @@ function processScheduleData() {
 }
 
 // ==========================================
-// 7. GRÁFICOS E INTERFACE
+// 7. CHART & UI
 // ==========================================
 function parseSingleTimeRange(rangeStr) {
     if (!rangeStr || typeof rangeStr !== 'string') return null;
@@ -549,6 +386,7 @@ function renderMonthlyTrendChart() {
     const labels = [];
     const dataPoints = [];
     const pointColors = [];
+
     for (let d = 1; d <= totalDays; d++) {
         let working = 0;
         let totalStaff = 0;
@@ -564,8 +402,10 @@ function renderMonthlyTrendChart() {
         dataPoints.push(percentage);
         pointColors.push(percentage < 75 ? '#F87171' : '#34D399');
     }
+
     const ctx = document.getElementById('dailyChart').getContext('2d');
     if (dailyChart) { dailyChart.destroy(); dailyChart = null; }
+
     dailyChart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -592,7 +432,25 @@ function renderMonthlyTrendChart() {
                 y: { min: 0, max: 100, ticks: { callback: v => v+'%', color: '#64748B' }, grid: { color: '#2E3250' } },
                 x: { ticks: { color: '#64748B' }, grid: { display: false } }
             }
-        }
+        },
+        plugins: [{
+            id: 'targetLine',
+            beforeDraw: (chart) => {
+                const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+                const yValue = y.getPixelForValue(75);
+                if(yValue) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#4B5563';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(left, yValue);
+                    ctx.lineTo(right, yValue);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }]
     });
 }
 
@@ -603,8 +461,11 @@ function updateDailyChartDonut(working, off, offShift, vacation) {
     [working, off, offShift, vacation].forEach((d,i)=>{ 
         if(d>0 || (working+off+offShift+vacation)===0){ fData.push(d); fLabels.push(labels[i]); fColors.push(rawColors[i]); }
     });
+
     const ctx = document.getElementById('dailyChart').getContext('2d');
-    if (dailyChart && dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
+    if (dailyChart) {
+        if (dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
+    }
     if (!dailyChart) {
         dailyChart = new Chart(ctx, {
             type: 'doughnut',
@@ -613,7 +474,9 @@ function updateDailyChartDonut(working, off, offShift, vacation) {
                 responsive: true, 
                 maintainAspectRatio: false, 
                 cutout: '75%', 
-                plugins: { legend: { position:'bottom', labels:{ padding:15, boxWidth: 8, color: '#94A3B8', font: {size: 10} } } } 
+                plugins: { 
+                    legend: { position:'bottom', labels:{ padding:15, boxWidth: 8, color: '#94A3B8', font: {size: 10} } } 
+                } 
             },
             plugins: [centerTextPlugin]
         });
@@ -627,23 +490,27 @@ function updateDailyChartDonut(working, off, offShift, vacation) {
 
 function updateDailyView() {
     if (isTrendMode) window.toggleChartMode();
+
     const currentDateLabel = document.getElementById('currentDateLabel');
     const dayOfWeekIndex = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
     const now = new Date();
     const isToday = (now.getDate() === currentDay && now.getMonth() === selectedMonthObj.month && now.getFullYear() === selectedMonthObj.year);
     
     currentDateLabel.textContent = `${daysOfWeek[dayOfWeekIndex]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
-    
+
     let w=0, o=0, v=0, os=0;
     let wH='', oH='', vH='', osH='';
-    
-    if (Object.keys(scheduleData).length === 0) { updateDailyChartDonut(0,0,0,0); return; }
-    
+
+    if (Object.keys(scheduleData).length === 0) {
+        updateDailyChartDonut(0,0,0,0);
+        return;
+    }
+
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         let status = emp.schedule[currentDay-1] || 'F';
         let display = status;
-        
+
         if (status === 'FE') { v++; display='FE'; }
         else if (isToday && status === 'T') {
             if (!isWorkingTime(emp.info.Horário)) { os++; display='OFF-SHIFT'; status='F_EFFECTIVE'; }
@@ -651,7 +518,8 @@ function updateDailyView() {
         }
         else if (status === 'T') w++;
         else o++; 
-        
+
+        // CRIAÇÃO DO ITEM DA LISTA COM BORDAS ARREDONDADAS (rounded-xl)
         const row = `
             <li class="flex justify-between items-center text-sm p-4 rounded-xl mb-2 bg-[#1A1C2E] hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500 transition-all cursor-default shadow-sm group">
                 <div class="flex flex-col">
@@ -660,28 +528,28 @@ function updateDailyView() {
                 </div>
                 <span class="day-status status-${display} rounded-lg px-2.5 py-1 text-[10px] font-bold tracking-wide shadow-none border-0 bg-opacity-10">${statusMap[display]||display}</span>
             </li>`;
-        
+
         if (status==='T') wH+=row;
         else if (status==='F_EFFECTIVE') osH+=row;
         else if (['FE'].includes(status)) vH+=row;
         else oH+=row;
     });
-    
+
     document.getElementById('kpiWorking').textContent = w;
     document.getElementById('kpiOffShift').textContent = os;
     document.getElementById('kpiOff').textContent = o;
     document.getElementById('kpiVacation').textContent = v;
-    
+
     document.getElementById('listWorking').innerHTML = wH || '<li class="text-gray-600 text-xs text-center py-4 italic">Ninguém neste status.</li>';
     document.getElementById('listOffShift').innerHTML = osH || '<li class="text-gray-600 text-xs text-center py-4 italic">Ninguém neste status.</li>';
     document.getElementById('listOff').innerHTML = oH || '<li class="text-gray-600 text-xs text-center py-4 italic">Ninguém neste status.</li>';
     document.getElementById('listVacation').innerHTML = vH || '<li class="text-gray-600 text-xs text-center py-4 italic">Ninguém neste status.</li>';
-    
+
     updateDailyChartDonut(w, o, os, v);
 }
 
 // ==========================================
-// 8. ABA PESSOAL / EDITOR DE ESCALA
+// 8. PERSONAL & ADMIN
 // ==========================================
 function initSelect() {
     const select = document.getElementById('employeeSelect');
@@ -696,8 +564,12 @@ function initSelect() {
     
     newSelect.addEventListener('change', e => {
         const name = e.target.value;
-        if(name) { updatePersonalView(name); } 
-        else { document.getElementById('personalInfoCard').classList.add('hidden'); document.getElementById('calendarContainer').classList.add('hidden'); }
+        if(name) {
+            updatePersonalView(name);
+        } else {
+            document.getElementById('personalInfoCard').classList.add('hidden');
+            document.getElementById('calendarContainer').classList.add('hidden');
+        }
     });
 }
 
@@ -705,27 +577,28 @@ function updatePersonalView(name) {
     const emp = scheduleData[name];
     if (!emp) return;
     const card = document.getElementById('personalInfoCard');
+    
     const cargo = emp.info.Cargo || emp.info.Grupo || 'Colaborador';
     const horario = emp.info.Horário || '--:--';
     const celula = emp.info.Célula || emp.info.Celula || 'Sitelbra';
     let turno = emp.info.Turno || 'Comercial';
-    
+
     let statusToday = emp.schedule[currentDay - 1] || 'F';
     let displayStatus = statusToday;
     const now = new Date();
     const isToday = (now.getDate() === currentDay && now.getMonth() === selectedMonthObj.month && now.getFullYear() === selectedMonthObj.year);
     if (isToday && statusToday === 'T' && !isWorkingTime(emp.info.Horário)) displayStatus = 'OFF-SHIFT';
-    
-    const colorClasses = { 
-        'T': 'bg-green-500 shadow-[0_0_10px_#22c55e]', 
-        'F': 'bg-yellow-500 shadow-[0_0_10px_#eab308]', 
-        'FS': 'bg-sky-500 shadow-[0_0_10px_#0ea5e9]', 
-        'FD': 'bg-indigo-500 shadow-[0_0_10px_#6366f1]', 
-        'FE': 'bg-red-500 shadow-[0_0_10px_#ef4444]', 
-        'OFF-SHIFT': 'bg-fuchsia-500 shadow-[0_0_10px_#d946ef]' 
+
+    const colorClasses = {
+        'T': 'bg-green-500 shadow-[0_0_10px_#22c55e]',
+        'F': 'bg-yellow-500 shadow-[0_0_10px_#eab308]',
+        'FS': 'bg-sky-500 shadow-[0_0_10px_#0ea5e9]',
+        'FD': 'bg-indigo-500 shadow-[0_0_10px_#6366f1]',
+        'FE': 'bg-red-500 shadow-[0_0_10px_#ef4444]',
+        'OFF-SHIFT': 'bg-fuchsia-500 shadow-[0_0_10px_#d946ef]'
     };
     let dotClass = colorClasses[displayStatus] || 'bg-gray-500';
-    
+
     card.classList.remove('hidden');
     card.className = "mb-8 bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden";
     card.innerHTML = `
@@ -737,23 +610,32 @@ function updatePersonalView(name) {
             <div class="w-3 h-3 rounded-full ${dotClass}"></div>
         </div>
         <div class="grid grid-cols-3 divide-x divide-[#2E3250] bg-[#0F1020]/50 border-t border-[#2E3250]">
-            <div class="py-4 text-center"><span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Célula</span><span class="block text-sm font-bold text-gray-300 mt-1">${celula}</span></div>
-            <div class="py-4 text-center"><span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Turno</span><span class="block text-sm font-bold text-gray-300 mt-1">${turno}</span></div>
-            <div class="py-4 text-center"><span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Horário</span><span class="block text-sm font-bold text-gray-300 mt-1">${horario}</span></div>
-        </div>`;
-    
+            <div class="py-4 text-center">
+                <span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Célula</span>
+                <span class="block text-sm font-bold text-gray-300 mt-1">${celula}</span>
+            </div>
+            <div class="py-4 text-center">
+                <span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Turno</span>
+                <span class="block text-sm font-bold text-gray-300 mt-1">${turno}</span>
+            </div>
+            <div class="py-4 text-center">
+                <span class="block text-[10px] text-gray-500 font-bold uppercase tracking-wider">Horário</span>
+                <span class="block text-sm font-bold text-gray-300 mt-1">${horario}</span>
+            </div>
+        </div>
+    `;
+
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, emp.schedule);
 }
 
-function cycleStatus(current) { 
-    const sequence = ['T', 'F', 'FS', 'FD', 'FE']; 
-    let idx = sequence.indexOf(current); 
-    if(idx === -1) return 'T'; 
-    return sequence[(idx + 1) % sequence.length]; 
+function cycleStatus(current) {
+    const sequence = ['T', 'F', 'FS', 'FD', 'FE'];
+    let idx = sequence.indexOf(current);
+    if(idx === -1) return 'T';
+    return sequence[(idx + 1) % sequence.length];
 }
 
-// Edição de Escala (Clique no dia)
 async function handleCellClick(name, dayIndex) {
     if (!isAdmin) return;
     const emp = scheduleData[name];
@@ -764,14 +646,16 @@ async function handleCellClick(name, dayIndex) {
     hasUnsavedChanges = true;
     const statusEl = document.getElementById('saveStatus');
     const statusIcon = document.getElementById('saveStatusIcon');
-    if(statusEl) { 
-        statusEl.textContent = "Alterado (Não salvo)"; 
-        statusEl.className = "text-xs text-orange-400 font-bold"; 
+    if(statusEl) {
+        statusEl.textContent = "Alterado (Não salvo)";
+        statusEl.className = "text-xs text-orange-400 font-bold";
     }
     if(statusIcon) statusIcon.className = "w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse";
     
     updateCalendar(name, emp.schedule);
     updateDailyView();
+    const sel = document.getElementById('employeeSelect');
+    updateWeekendTable(sel ? sel.value : null);
 }
 
 function updateCalendar(name, schedule) {
@@ -782,10 +666,18 @@ function updateCalendar(name, schedule) {
     if(isMobile) {
         grid.className = 'space-y-2 mt-4';
         schedule.forEach((st, i) => {
-            let pillClasses = "flex justify-between items-center p-3 px-4 rounded-xl border transition-all text-sm bg-[#1A1C2E] border-[#2E3250] text-gray-300";
+            let pillClasses = "flex justify-between items-center p-3 px-4 rounded-xl border transition-all text-sm";
             if(isAdmin) pillClasses += " cursor-pointer active:scale-95";
-            const el = document.createElement('div'); el.className = pillClasses;
-            el.innerHTML = `<span class="font-mono text-gray-500">Dia ${pad(i+1)}</span><span class="day-status status-${st}">${statusMap[st]||st}</span>`;
+            
+            // Dark Mode Mobile Pills
+            pillClasses += " bg-[#1A1C2E] border-[#2E3250] text-gray-300";
+
+            const el = document.createElement('div');
+            el.className = pillClasses;
+            el.innerHTML = `
+                <span class="font-mono text-gray-500">Dia ${pad(i+1)}</span>
+                <span class="day-status status-${st}">${statusMap[st]||st}</span>
+            `;
             if(isAdmin) el.onclick = () => handleCellClick(name, i);
             grid.appendChild(el);
         });
@@ -796,20 +688,28 @@ function updateCalendar(name, schedule) {
         for(let i=0;i<empty;i++) grid.insertAdjacentHTML('beforeend','<div class="calendar-cell bg-[#1A1C2E] opacity-50"></div>');
         
         schedule.forEach((st, i) => {
-            const cell = document.createElement('div'); cell.className = "calendar-cell relative group";
-            if(isAdmin) { 
-                cell.classList.add('cursor-pointer'); 
-                cell.title = "Clique para alterar"; 
-                cell.onclick = () => handleCellClick(name, i); 
+            const cell = document.createElement('div');
+            cell.className = "calendar-cell relative group";
+            
+            const badge = document.createElement('div');
+            badge.className = `day-status-badge status-${st}`;
+            badge.textContent = statusMap[st]||st;
+            
+            if(isAdmin) {
+                cell.classList.add('cursor-pointer');
+                cell.title = "Clique para alterar";
+                cell.onclick = () => handleCellClick(name, i);
             }
-            cell.innerHTML = `<div class="day-number group-hover:text-white transition-colors">${pad(i+1)}</div><div class="day-status-badge status-${st}">${statusMap[st]||st}</div>`;
+
+            cell.innerHTML = `<div class="day-number group-hover:text-white transition-colors">${pad(i+1)}</div>`;
+            cell.appendChild(badge);
             grid.appendChild(cell);
         });
     }
 }
 
 // ==========================================
-// 9. INICIALIZAÇÃO
+// 9. INIT
 // ==========================================
 function initGlobal() {
     initTabs();
@@ -820,23 +720,24 @@ function initGlobal() {
         sel.className = 'bg-[#1A1C2E] text-white text-sm font-medium px-4 py-2 rounded-lg border border-[#2E3250] focus:ring-2 focus:ring-purple-500 outline-none cursor-pointer w-full md:w-auto shadow-lg';
         
         availableMonths.forEach(m => {
-            const opt = document.createElement('option'); opt.value = `${m.year}-${m.month}`;
+            const opt = document.createElement('option'); 
+            opt.value = `${m.year}-${m.month}`;
             opt.textContent = `${monthNames[m.month]}/${m.year}`;
             if(m.month === selectedMonthObj.month && m.year === selectedMonthObj.year) opt.selected = true;
             sel.appendChild(opt);
         });
         
-        sel.addEventListener('change', e=>{ 
-            const [y,mo] = e.target.value.split('-').map(Number); 
-            selectedMonthObj={year:y, month:mo}; 
+        sel.addEventListener('change', e=>{
+            const [y,mo] = e.target.value.split('-').map(Number);
+            selectedMonthObj={year:y, month:mo};
             loadDataFromCloud(); 
         });
         header.appendChild(sel);
     }
-    
+
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    
+
     loadDataFromCloud();
 }
 
@@ -847,12 +748,64 @@ function initTabs() {
             document.querySelectorAll('.tab-content').forEach(x=>x.classList.add('hidden'));
             b.classList.add('active');
             document.getElementById(`${b.dataset.tab}View`).classList.remove('hidden');
-            if(b.dataset.tab==='personal') { 
-                const sel = document.getElementById('employeeSelect'); 
-                if(sel && sel.value) updatePersonalView(sel.value); 
+            if(b.dataset.tab==='personal') {
+                const sel = document.getElementById('employeeSelect');
+                if(sel && sel.value) updateWeekendTable(sel.value); 
+                else updateWeekendTable(null);
             }
         });
     });
+}
+
+function updateWeekendTable(specificName) {
+    const container = document.getElementById('weekendPlantaoContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    const m = { y: selectedMonthObj.year, mo: selectedMonthObj.month };
+    const total = new Date(m.y, m.mo+1, 0).getDate();
+    const fmtDate = (d) => `${pad(d)}/${pad(m.mo+1)}`;
+
+    for (let d=1; d<=total; d++){
+        const dow = new Date(m.y, m.mo, d).getDay();
+        if (dow === 6) { 
+            const satDate = d;
+            const sunDate = d+1 <= total ? d+1 : null;
+            let satW=[], sunW=[];
+            Object.keys(scheduleData).forEach(n=>{
+                if(scheduleData[n].schedule[satDate-1]==='T') satW.push(n);
+                if(sunDate && scheduleData[n].schedule[sunDate-1]==='T') sunW.push(n);
+            });
+
+            if(satW.length || sunW.length) {
+                const makeTags = (list, colorClass) => {
+                    if(!list.length) return '<span class="text-gray-600 text-xs italic">Sem escala</span>';
+                    return list.map(name => `<span class="inline-block bg-[#0F1020] border border-${colorClass}-900 text-${colorClass}-400 px-2 py-1 rounded text-xs font-bold mr-1 mb-1 shadow-sm">${name}</span>`).join('');
+                };
+                const satTags = makeTags(satW, 'sky');
+                const sunTags = makeTags(sunW, 'indigo');
+                const labelSat = `Sábado ${fmtDate(satDate)}`;
+                const labelSun = sunDate ? `Domingo ${fmtDate(sunDate)}` : 'Domingo';
+
+                const cardHTML = `
+                <div class="bg-[#1A1C2E] rounded-xl shadow-lg border border-[#2E3250] overflow-hidden">
+                    <div class="bg-[#2E3250]/50 p-3 flex justify-between items-center border-b border-[#2E3250]">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Fim de Semana</span>
+                        <span class="text-xs font-mono text-purple-400 bg-purple-900/20 px-2 py-0.5 rounded border border-purple-500/30">${fmtDate(satDate)}</span>
+                    </div>
+                    <div class="p-4 space-y-4">
+                        <div>
+                            <h4 class="text-sky-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSat}</h4>
+                            <div class="flex flex-wrap">${satTags}</div>
+                        </div>
+                        ${sunDate ? `<div class="pt-3 border-t border-[#2E3250]">
+                            <h4 class="text-indigo-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSun}</h4>
+                            <div class="flex flex-wrap">${sunTags}</div></div>` : ''}
+                    </div>
+                </div>`;
+                container.insertAdjacentHTML('beforeend', cardHTML);
+            }
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initGlobal);
