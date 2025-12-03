@@ -11,11 +11,7 @@
         tailwind.config = {
             darkMode: 'class',
             theme: {
-                extend: {
-                    colors: {
-                        cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250', primary: '#7C3AED' }
-                    }
-                }
+                extend: { colors: { cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250', primary: '#7C3AED' } } }
             }
         }
     </script>
@@ -30,7 +26,6 @@
 </head>
 <body class="h-screen flex items-center justify-center p-4 relative overflow-hidden">
     
-    <!-- Background Effects -->
     <div class="absolute top-0 left-0 w-full h-full pointer-events-none z-0">
         <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-900/20 rounded-full blur-3xl"></div>
         <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-orange-900/20 rounded-full blur-3xl"></div>
@@ -67,9 +62,9 @@
             </button>
         </form>
         
-        <div id="loadingOverlay" class="absolute inset-0 bg-cronos-card/90 z-20 hidden flex-col items-center justify-center rounded-2xl">
+        <div id="loadingOverlay" class="absolute inset-0 bg-cronos-card/95 z-20 hidden flex-col items-center justify-center rounded-2xl">
             <i class="fas fa-circle-notch fa-spin text-4xl text-purple-500 mb-4"></i>
-            <p class="text-gray-300 font-bold animate-pulse">Direcionando...</p>
+            <p id="loadingText" class="text-gray-300 font-bold animate-pulse">Autenticando...</p>
         </div>
     </div>
 
@@ -91,15 +86,53 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Se já estiver logado, redireciona automaticamente
+        // Função de Redirecionamento
+        async function redirectUser(user) {
+            const loadingText = document.getElementById('loadingText');
+            if(loadingText) loadingText.textContent = "Verificando permissões...";
+
+            const adminEmail = "karina.krisan@sitelbra.com.br"; // SEU EMAIL ADMIN AQUI
+            let isAdmin = false;
+
+            // 1. Verifica email direto
+            if (user.email.toLowerCase() === adminEmail.toLowerCase()) {
+                isAdmin = true;
+            } else {
+                // 2. Verifica coleção admins
+                try {
+                    const docSnap = await getDoc(doc(db, "admins", user.uid));
+                    if (docSnap.exists()) isAdmin = true;
+                } catch (e) { 
+                    console.log("Colaborador detectado (Sem permissão admin):", e); 
+                }
+            }
+
+            if(loadingText) loadingText.textContent = isAdmin ? "Bem-vindo, Líder!" : "Acessando Portal...";
+            
+            // Pequeno delay para UX
+            setTimeout(() => {
+                if (isAdmin) {
+                    window.location.href = "admin.html";
+                } else {
+                    window.location.href = "collaborator.html";
+                }
+            }, 500);
+        }
+
+        // Listener de Auth (Redirecionamento Automático)
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 document.getElementById('loadingOverlay').classList.remove('hidden');
                 await redirectUser(user);
+            } else {
+                // Garante que o loading sai se não tiver user (ex: após logout)
+                document.getElementById('loadingOverlay').classList.add('hidden');
             }
         });
 
-        document.getElementById('loginPageForm').addEventListener('submit', async (e) => {
+        // Handler do Formulário
+        const form = document.getElementById('loginPageForm');
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
             const pass = document.getElementById('passwordInput').value;
@@ -107,42 +140,24 @@
             const errorDiv = document.getElementById('loginError');
 
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
             errorDiv.classList.add('hidden');
 
             try {
-                const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-                // O onAuthStateChanged vai lidar com o redirecionamento
+                await signInWithEmailAndPassword(auth, email, pass);
+                // O onAuthStateChanged vai pegar a mudança e redirecionar
             } catch (error) {
                 console.error(error);
-                document.getElementById('errorText').textContent = "Credenciais inválidas.";
+                let msg = "Erro ao conectar.";
+                if(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
+                else if(error.code === 'auth/too-many-requests') msg = "Muitas tentativas. Aguarde.";
+                
+                document.getElementById('errorText').textContent = msg;
                 errorDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btn.innerHTML = '<span>Entrar</span> <i class="fas fa-arrow-right"></i>';
             }
         });
-
-        async function redirectUser(user) {
-            // Verifica se é Admin (pelo email ou coleção admins)
-            const adminEmail = "seu-email-admin@cronos.com"; // Deve bater com o do firestore.rules
-            let isAdmin = false;
-
-            if (user.email === adminEmail) {
-                isAdmin = true;
-            } else {
-                try {
-                    const docSnap = await getDoc(doc(db, "admins", user.uid));
-                    if (docSnap.exists()) isAdmin = true;
-                } catch (e) { console.log("Erro check admin", e); }
-            }
-
-            if (isAdmin) {
-                window.location.href = "admin.html";
-            } else {
-                window.location.href = "collaborator.html";
-            }
-        }
     </script>
 </body>
 </html>
-
