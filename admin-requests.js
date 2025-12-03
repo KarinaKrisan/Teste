@@ -1,10 +1,9 @@
-import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, collection, query, where, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-// Função para iniciar o listener de aprovações (Chamar no app.js dentro do if(isAdmin))
+// Função principal chamada pelo app.js
 export function initAdminRequestPanel(db) {
-    // Cria botão de notificações na interface Admin se não existir
     if (!document.getElementById('btnAdminNotifications')) {
-        const toolbar = document.querySelector('#adminToolbar > div'); // Pega a div interna da toolbar
+        const toolbar = document.querySelector('#adminToolbar > div'); 
         if(toolbar) {
             const btn = document.createElement('button');
             btn.id = 'btnAdminNotifications';
@@ -12,12 +11,11 @@ export function initAdminRequestPanel(db) {
             btn.innerHTML = `<i class="fas fa-bell"></i> <span id="badgeRequests" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center text-white font-bold">0</span>`;
             btn.onclick = toggleRequestModal;
             toolbar.appendChild(btn);
-            
             createAdminModal();
         }
     }
 
-    // Monitora solicitações com status 'pending_leader'
+    // Ouve APENAS solicitações prontas para líder (pending_leader)
     const q = query(collection(db, "requests"), where("status", "==", "pending_leader"));
     
     onSnapshot(q, (snapshot) => {
@@ -49,20 +47,18 @@ export function initAdminRequestPanel(db) {
                             <p class="text-white font-bold">${req.requester.name}</p>
                             <p class="text-xs text-gray-400">Quer mudar para <strong>${req.details.targetShift}</strong> no dia ${req.details.date}</p>
                             <p class="text-[10px] text-gray-500 italic mt-1">"${req.details.reason}"</p>
-                        </div>
-                    `;
+                        </div>`;
                 } else {
                     contentHTML = `
                         <div class="flex-1">
-                            <span class="text-xs font-bold text-orange-400 uppercase">Troca de Folga (Aceite Realizado)</span>
+                            <span class="text-xs font-bold text-orange-400 uppercase">Troca de Folga (Já Aceita pelo Par)</span>
                             <div class="flex items-center gap-2 mt-1">
                                 <span class="text-white font-bold">${req.requester.name}</span>
                                 <i class="fas fa-exchange-alt text-gray-600 text-xs"></i>
                                 <span class="text-white font-bold">${req.target.name}</span>
                             </div>
                             <p class="text-xs text-gray-400 mt-1">Trocam dias: ${req.details.requesterDate} ↔ ${req.details.targetDate}</p>
-                        </div>
-                    `;
+                        </div>`;
                 }
 
                 const item = document.createElement('div');
@@ -70,27 +66,19 @@ export function initAdminRequestPanel(db) {
                 item.innerHTML = `
                     ${contentHTML}
                     <div class="flex flex-col gap-2">
-                        <button onclick="window.approveRequest('${id}', '${req.type}')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg">Aprovar</button>
+                        <button onclick="window.approveRequest('${id}')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg">Aprovar</button>
                         <button onclick="window.rejectRequest('${id}')" class="bg-red-900/50 hover:bg-red-900 border border-red-500/30 text-red-400 text-xs font-bold px-3 py-1.5 rounded-lg">Recusar</button>
-                    </div>
-                `;
+                    </div>`;
                 list.appendChild(item);
             });
         }
     });
 
-    // Torna funções globais para o onclick funcionar
-    window.approveRequest = async (docId, type) => {
+    window.approveRequest = async (docId) => {
         try {
-            // 1. Atualiza status no documento de request
             const reqRef = doc(db, "requests", docId);
             await updateDoc(reqRef, { status: 'approved', approvedAt: new Date().toISOString() });
-            
-            // 2. ATENÇÃO: Aqui você deve implementar a lógica para alterar o documento "escalas" real
-            // Como isso é complexo e depende da estrutura exata do seu JSON, deixo o comentário:
-            // if (type === 'shift_change') { alterarDiaNoBanco(date, user, novoTurno) }
-            
-            alert("Solicitação aprovada e arquivada.");
+            alert("Aprovado! Lembre-se de atualizar a escala visualmente.");
         } catch(e) { console.error(e); alert("Erro ao aprovar."); }
     };
 
@@ -109,9 +97,7 @@ function createAdminModal() {
                 <h2 class="text-xl font-bold text-white"><i class="fas fa-tasks mr-2 text-purple-500"></i>Aprovações Pendentes</h2>
                 <button onclick="toggleRequestModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
             </div>
-            <div id="adminRequestList" class="p-6 overflow-y-auto custom-scrollbar flex-1">
-                <!-- Lista injetada via JS -->
-            </div>
+            <div id="adminRequestList" class="p-6 overflow-y-auto custom-scrollbar flex-1"></div>
         </div>
     `;
     document.body.appendChild(modal);
@@ -121,3 +107,5 @@ window.toggleRequestModal = () => {
     const m = document.getElementById('adminRequestsModal');
     if(m) m.classList.toggle('hidden');
 };
+
+
