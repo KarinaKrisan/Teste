@@ -104,8 +104,9 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        
-        // 1. ADMIN CHECK
+        console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
+
+        // 1. ADMIN
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -126,7 +127,7 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. COLLAB CHECK
+        // 2. COLABORADOR
         let isDatabaseCollab = false;
         let dbName = null;
         try {
@@ -590,11 +591,13 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
         
         if (type === 'mudanca_turno') {
             try {
+                // Tenta achar com Nome maiúsculo
                 const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
                 const snap = await getDocs(q);
                 if (!snap.empty) {
                     await updateDoc(snap.docs[0].ref, { Turno: newDetail });
                 } else {
+                    // Tenta achar com nome minúsculo
                     const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
                     const snap2 = await getDocs(q2);
                     if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
@@ -625,8 +628,6 @@ function applyScheduleChange(req) {
     }
 }
 
-// --- INTEGRAÇÃO: EDIÇÃO DIRETA LÍDER ---
-// Ciclo de Status: T (Trab) -> F (Folga) -> FE (Férias) -> T
 function toggleDayStatus(name, index) {
     const currentStatus = scheduleData[name].schedule[index];
     let nextStatus = 'T';
@@ -634,9 +635,8 @@ function toggleDayStatus(name, index) {
     if (currentStatus === 'T') nextStatus = 'F';
     else if (currentStatus === 'F') nextStatus = 'FE';
     else if (currentStatus === 'FE') nextStatus = 'T';
-    else nextStatus = 'T'; // Default fallback
+    else nextStatus = 'T'; 
 
-    // Atualiza Memória
     scheduleData[name].schedule[index] = nextStatus;
     if (rawSchedule[name].calculatedSchedule) {
         rawSchedule[name].calculatedSchedule[index] = nextStatus;
@@ -644,10 +644,8 @@ function toggleDayStatus(name, index) {
         rawSchedule[name].schedule[index] = nextStatus;
     }
 
-    // Re-renderiza a tela
     renderPersonalCalendar(name);
     
-    // Atualiza status na barra
     const statusEl = document.getElementById('saveStatus');
     const iconEl = document.getElementById('saveStatusIcon');
     if(statusEl) {
@@ -657,186 +655,9 @@ function toggleDayStatus(name, index) {
     }
 }
 
-// ... (Restante das funções de renderização, mesmo do anterior) ...
-
-function processScheduleData() {
-    scheduleData = {};
-    if (!rawSchedule) return;
-
-    Object.keys(rawSchedule).forEach(name => {
-        const scheduleArr = rawSchedule[name].calculatedSchedule || rawSchedule[name].schedule || [];
-        scheduleData[name] = {
-            schedule: scheduleArr,
-            info: rawSchedule[name].info || {}
-        };
-    });
-}
-
-function updateDailyView() {
-    const dateLabel = document.getElementById('currentDateLabel');
-    const day = currentDay;
-    const month = monthNames[selectedMonthObj.month];
-    if(dateLabel) dateLabel.textContent = `${day} de ${month}`;
-
-    const listWorking = document.getElementById('listWorking');
-    const listOff = document.getElementById('listOff');
-    const listOffShift = document.getElementById('listOffShift');
-    const listVacation = document.getElementById('listVacation');
-    
-    if(listWorking) listWorking.innerHTML = '';
-    if(listOff) listOff.innerHTML = '';
-    if(listOffShift) listOffShift.innerHTML = '';
-    if(listVacation) listVacation.innerHTML = '';
-
-    let cWorking = 0, cOff = 0, cOffShift = 0, cVacation = 0;
-
-    Object.keys(scheduleData).sort().forEach(name => {
-        const status = scheduleData[name].schedule[day - 1]; 
-        const li = document.createElement('li');
-        li.className = "text-xs p-2 rounded bg-[#1A1C2E] border border-[#2E3250] flex justify-between items-center";
-        li.innerHTML = `<span class="font-bold text-gray-300">${name}</span> <span class="opacity-50 text-[10px]">${status || '-'}</span>`;
-
-        if (status === 'T') {
-            cWorking++;
-            if(listWorking) listWorking.appendChild(li);
-        } else if (['F', 'FS', 'FD'].includes(status)) {
-            cOff++;
-            if(listOff) listOff.appendChild(li);
-        } else if (status === 'FE') {
-            cVacation++;
-            if(listVacation) listVacation.appendChild(li);
-        } else {
-            cOffShift++;
-            if(listOffShift) listOffShift.appendChild(li);
-        }
-    });
-
-    const kpiWorking = document.getElementById('kpiWorking');
-    const kpiOff = document.getElementById('kpiOff');
-    const kpiOffShift = document.getElementById('kpiOffShift');
-    const kpiVacation = document.getElementById('kpiVacation');
-
-    if(kpiWorking) kpiWorking.textContent = cWorking;
-    if(kpiOff) kpiOff.textContent = cOff;
-    if(kpiOffShift) kpiOffShift.textContent = cOffShift;
-    if(kpiVacation) kpiVacation.textContent = cVacation;
-
-    updateChart(cWorking, cOff, cOffShift, cVacation);
-}
-
-function initSelect() {
-    const select = document.getElementById('employeeSelect');
-    if (!select) return;
-
-    select.innerHTML = '';
-
-    if (!isAdmin && currentUserCollab) {
-        const opt = document.createElement('option');
-        opt.value = currentUserCollab;
-        opt.textContent = currentUserCollab;
-        select.appendChild(opt);
-        select.value = currentUserCollab;
-        select.disabled = true; 
-        
-        if (scheduleData && scheduleData[currentUserCollab]) {
-            renderPersonalCalendar(currentUserCollab);
-        }
-    } 
-    else {
-        select.disabled = false;
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = "";
-        defaultOpt.textContent = "Selecione um colaborador";
-        select.appendChild(defaultOpt);
-
-        Object.keys(scheduleData).sort().forEach(name => {
-            const opt = document.createElement('option');
-            opt.value = name; 
-            opt.textContent = name;
-            select.appendChild(opt);
-        });
-    }
-
-    select.addEventListener('change', (e) => {
-        const name = e.target.value;
-        if (name && scheduleData[name]) renderPersonalCalendar(name);
-        else document.getElementById('calendarContainer')?.classList.add('hidden');
-    });
-}
-
-function renderWeekendModules(name) {
-    const container = document.getElementById('weekendPlantaoContainer');
-    if(!container) return;
-    container.innerHTML = '';
-
-    if(!scheduleData[name]) return;
-
-    const schedule = scheduleData[name].schedule;
-    let hasWeekendWork = false;
-
-    schedule.forEach((status, index) => {
-        const day = index + 1;
-        const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
-        const dayOfWeek = date.getDay(); 
-
-        if ((dayOfWeek === 0 || dayOfWeek === 6) && status === 'T') {
-            hasWeekendWork = true;
-            
-            const dayName = dayOfWeek === 0 ? 'Domingo' : 'Sábado';
-            const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
-
-            const colleagues = [];
-            Object.keys(scheduleData).forEach(peerName => {
-                if (peerName !== name && scheduleData[peerName].schedule[index] === 'T') {
-                    colleagues.push(peerName);
-                }
-            });
-
-            let colleaguesHtml = '';
-            if (colleagues.length > 0) {
-                colleaguesHtml = `<div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2">`;
-                colleagues.forEach(peer => {
-                    colleaguesHtml += `
-                        <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2">
-                            <i class="fas fa-user-astronaut"></i> <span>${peer}</span>
-                        </div>
-                    `;
-                });
-                colleaguesHtml += `</div>`;
-            } else {
-                colleaguesHtml = `<div class="mt-4 pt-3 border-t border-white/5 text-xs text-gray-500 italic">Plantão sozinho</div>`;
-            }
-
-            const card = document.createElement('div');
-            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden group transition-all hover:border-orange-500/50";
-            
-            card.innerHTML = `
-                <div class="absolute right-0 top-0 w-16 h-16 bg-orange-500/10 rounded-bl-full transition-all group-hover:bg-orange-500/20 pointer-events-none"></div>
-                <div class="flex items-center justify-between relative z-10">
-                    <div>
-                        <p class="text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">${dayName}</p>
-                        <p class="text-white font-mono text-2xl font-bold">${dateStr}</p>
-                    </div>
-                    <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(249,115,22,0.2)]">
-                        <i class="fas fa-briefcase"></i> <span>Escalado</span>
-                    </div>
-                </div>
-                ${colleaguesHtml}
-            `;
-            container.appendChild(card);
-        }
-    });
-
-    if (!hasWeekendWork) {
-        container.innerHTML = `
-            <div class="col-span-full text-center py-10 text-gray-500 border border-dashed border-gray-700/50 rounded-xl bg-[#161828]/50">
-                <i class="fas fa-couch text-3xl mb-3 opacity-30"></i>
-                <p class="text-sm font-medium">Folga em todos os finais de semana.</p>
-            </div>
-        `;
-    }
-}
-
+// -----------------------------------------------------
+// ATUALIZAÇÃO: HEADER CRACHÁ (LEITURA DINÂMICA)
+// -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
     const grid = document.getElementById('calendarGrid');
@@ -918,7 +739,7 @@ function renderPersonalCalendar(name) {
 
         cell.innerHTML = `<div class="day-number">${dayNum}</div><div class="${badgeClass}">${status}</div>`;
         cell.addEventListener('click', () => {
-            if(isAdmin) toggleDayStatus(name, i); // EDITAR DIRETAMENTE
+            if(isAdmin) toggleDayStatus(name, i);
             else if(currentUserCollab === name) openRequestModal(i);
         });
 
@@ -928,6 +749,7 @@ function renderPersonalCalendar(name) {
     renderWeekendModules(name);
 }
 
+// --- BUSCA DADOS FLEXÍVEL (Com Acento e Sem Acento) ---
 async function fetchCollaboratorDetails(name) {
     try {
         const q = query(collection(db, "colaboradores"), where("Nome", "==", name));
@@ -943,10 +765,13 @@ async function fetchCollaboratorDetails(name) {
         }
 
         if (data) {
+            // Tenta todas as variações de escrita do banco (com e sem acento)
             const cargo = data.Cargo || data.cargo || "Colaborador";
-            const celula = data.Celula || data.celula || "Geral";
+            // Tenta 'Célula' (com acento), 'célula', 'Celula', 'celula'
+            const celula = data.Célula || data.célula || data.Celula || data.celula || "Geral";
             const turno = data.Turno || data.turno || "--";
-            const horario = data.Horario || data.horario || "--:--";
+            // Tenta 'Horário' (com acento), 'horário', 'Horario', 'horario'
+            const horario = data.Horário || data.horário || data.Horario || data.horario || "--:--";
 
             document.getElementById('badgeCargo').textContent = cargo;
             document.getElementById('badgeCelula').textContent = celula;
