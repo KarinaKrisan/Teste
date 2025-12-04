@@ -42,45 +42,37 @@ const availableMonths = [
     { year: 2025, month: 10 }, { year: 2025, month: 11 }, 
     { year: 2026, month: 0 }, { year: 2026, month: 1 }, { year: 2026, month: 2 }
 ];
-// Seleciona o mês atual ou o primeiro da lista
 let selectedMonthObj = availableMonths.find(m => m.year === systemYear && m.month === systemMonth) || availableMonths[0];
 
-const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga Dom','FE':'Férias','OFF-SHIFT':'Exp.Encerrado', 'F_EFFECTIVE': 'Exp.Encerrado' };
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
 // ==========================================
 // 4. GESTÃO DE ACESSO & UTILS
 // ==========================================
 
-// Função de normalização para strings (Remove acentos, espaços e caixa alta)
+// Função para normalizar strings (comparação de nomes)
 function normalizeString(str) {
     if (!str) return "";
-    return str
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-// Função inteligente para resolver nome do colaborador baseado no e-mail
+// Resolve o nome do colaborador cruzando Email vs Banco de Dados da Escala
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     const prefix = email.split('@')[0];
     const normalizedPrefix = normalizeString(prefix);
 
+    // Tenta achar match exato na escala carregada
     if (Object.keys(scheduleData).length > 0) {
         const matchKey = Object.keys(scheduleData).find(dbKey => {
             const normalizedDbKey = normalizeString(dbKey);
-            // Compara "karinakrisan" com "karinakrisan"
             return normalizedDbKey === normalizedPrefix || normalizedDbKey.includes(normalizedPrefix);
         });
         if (matchKey) return matchKey;
     }
     
-    // Fallback de formatação visual
-    return prefix.replace(/\./g, ' ').split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
+    // Fallback visual
+    return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 const landingPage = document.getElementById('landingPage');
@@ -104,63 +96,74 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER PRINCIPAL ===
+// === AUTH LISTENER PRINCIPAL (LÓGICA DE BANCO DE DADOS ESTRITA) ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        console.log("Usuário detectado:", user.email);
-        
+        console.log("Autenticado (Firebase Auth):", user.email);
+        const userEmail = user.email.toLowerCase();
+
+        // 1. Verifica na coleção 'administradores'
         let isDatabaseAdmin = false;
-        const userEmail = user.email.toLowerCase(); // Normaliza para verificação
-        
-        // --- 1. VERIFICAÇÃO DE ADMIN ---
         try {
-            // A. Verifica por UID
+            // Checa por UID
             const adminDocRefUid = doc(db, "administradores", user.uid);
             const adminDocSnapUid = await getDoc(adminDocRefUid);
-            
-            // B. Verifica por Email (ID do Doc)
+            // Checa por Email (ID do Doc)
             const adminDocRefEmail = doc(db, "administradores", userEmail);
             const adminDocSnapEmail = await getDoc(adminDocRefEmail);
+            // Checa por Query no campo email
+            const qAdmin = query(collection(db, "administradores"), where("email", "==", userEmail));
+            const querySnapAdmin = await getDocs(qAdmin);
 
-            if (adminDocSnapUid.exists() || adminDocSnapEmail.exists()) {
+            if (adminDocSnapUid.exists() || adminDocSnapEmail.exists() || !querySnapAdmin.empty) {
                 isDatabaseAdmin = true;
-            } else {
-                // C. Verifica por campo 'email' na coleção (Query Case Insensitive manual)
-                const q = query(collection(db, "administradores"), where("email", "==", userEmail));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) isDatabaseAdmin = true;
             }
-        } catch (error) {
-            console.error("Erro verificação admin:", error);
-        }
+        } catch (e) { console.error("Erro ao verificar admin:", e); }
 
-        // Admins Estáticos (Apenas os reais administradores)
-        // REMOVIDO: 'karina.krisan@sitelbra.com.br' desta lista para ela logar como colaborador
-        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gmail.com']; 
-
-        if (isDatabaseAdmin || staticAdmins.includes(userEmail)) {
-            console.log("Acesso concedido: ADMIN");
+        if (isDatabaseAdmin) {
+            console.log(">> Usuário encontrado na base 'administradores'.");
             setAdminMode(true);
             revealApp();
-        } else {
-            console.log("Acesso concedido: COLABORADOR");
-            
-            // Tenta buscar o nome real no DB de colaboradores
-            let dbName = null;
-            try {
-                const collabDocRef = doc(db, "colaboradores", user.uid);
-                const collabSnap = await getDoc(collabDocRef);
-                if (collabSnap.exists()) dbName = collabSnap.data().nome;
-            } catch (e) { console.error(e); }
+            loadDataFromCloud();
+            return;
+        }
 
+        // 2. Verifica na coleção 'colaboradores'
+        let isDatabaseCollab = false;
+        let dbName = null;
+        try {
+            // Checa por UID
+            const collabDocRef = doc(db, "colaboradores", user.uid);
+            const collabSnap = await getDoc(collabDocRef);
+            
+            // Checa por Query no campo email (caso o ID seja auto-gerado)
+            const qCollab = query(collection(db, "colaboradores"), where("email", "==", userEmail));
+            const querySnapCollab = await getDocs(qCollab);
+
+            if (collabSnap.exists()) {
+                isDatabaseCollab = true;
+                dbName = collabSnap.data().nome;
+            } else if (!querySnapCollab.empty) {
+                isDatabaseCollab = true;
+                dbName = querySnapCollab.docs[0].data().nome;
+            }
+        } catch (e) { console.error("Erro ao verificar colaborador:", e); }
+
+        if (isDatabaseCollab) {
+            console.log(">> Usuário encontrado na base 'colaboradores'.");
             const finalName = dbName || resolveCollaboratorName(user.email);
             currentUserCollab = finalName;
             setupCollabMode(currentUserCollab);
             revealApp();
+            loadDataFromCloud();
+            return;
         }
-        
-        // Carrega dados APÓS determinar o usuário
-        loadDataFromCloud();
+
+        // 3. Se não achou em NENHUMA base
+        console.warn(">> Acesso Negado: Usuário não está em 'administradores' nem 'colaboradores'.");
+        alert("Seu usuário não possui cadastro ativo nas bases de dados.");
+        signOut(auth);
+        hideApp();
 
     } else {
         hideApp();
@@ -207,7 +210,7 @@ function setupCollabMode(name) {
 
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
-        // Popula se estiver vazio
+        // Tenta popular o select se os dados já existirem
         if (empSelect.options.length <= 1 && Object.keys(scheduleData).length > 0) {
              Object.keys(scheduleData).sort().forEach(key => {
                 const opt = document.createElement('option');
@@ -289,7 +292,7 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect();
             
-            // Re-check nome colaborador após carregar dados
+            // Re-check nome colaborador após carregar dados (para garantir match com a escala)
             const user = auth.currentUser;
             if (user && !isAdmin && user.email) {
                 const betterName = resolveCollaboratorName(user.email);
@@ -299,13 +302,13 @@ async function loadDataFromCloud() {
                 }
             }
         } else {
-            console.log("Nenhum documento encontrado.");
+            console.log("Nenhum documento de escala encontrado para este mês.");
             rawSchedule = {}; 
-            processScheduleData(); // Limpa a tela
+            processScheduleData(); 
             updateDailyView();
         }
     } catch (e) {
-        console.error("Erro ao baixar dados:", e);
+        console.error("Erro ao baixar dados da escala:", e);
     }
 }
 
