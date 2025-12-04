@@ -78,24 +78,39 @@ onAuthStateChanged(auth, async (user) => {
         let isDatabaseAdmin = false;
         
         // --- 1. VERIFICAÇÃO DE ADMIN (COLEÇÃO 'administradores') ---
+        // Implementada verificação tripla para garantir acesso independente de como foi cadastrado
         try {
-            // Verifica por UID (Prioritário)
+            // A. Verifica por UID (Padrão do App - Cadastro Automático)
             const adminDocRefUid = doc(db, "administradores", user.uid);
             const adminDocSnapUid = await getDoc(adminDocRefUid);
             
             if (adminDocSnapUid.exists()) {
                 isDatabaseAdmin = true;
+                console.log("Admin encontrado via UID.");
             } else {
-                // Fallback: Verifica por query no campo email
-                const q = query(collection(db, "administradores"), where("email", "==", user.email));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) isDatabaseAdmin = true;
+                // B. Verifica por Email como ID (Padrão de Cadastro Manual comum)
+                const adminDocRefEmail = doc(db, "administradores", user.email);
+                const adminDocSnapEmail = await getDoc(adminDocRefEmail);
+
+                if (adminDocSnapEmail.exists()) {
+                    isDatabaseAdmin = true;
+                    console.log("Admin encontrado via E-mail (ID do Documento).");
+                } else {
+                    // C. Fallback: Verifica por query no campo 'email' (Padrão Auto-ID)
+                    const q = query(collection(db, "administradores"), where("email", "==", user.email));
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (!querySnapshot.empty) {
+                        isDatabaseAdmin = true;
+                        console.log("Admin encontrado via Busca no Campo 'email'.");
+                    }
+                }
             }
         } catch (error) {
             console.error("Erro ao verificar admin:", error);
         }
 
-        // Admins Supremos (Hardcoded) - CORRIGIDO gamil.com para gmail.com
+        // Admins Supremos (Hardcoded)
         const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gmail.com'];
 
         if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
@@ -108,13 +123,11 @@ onAuthStateChanged(auth, async (user) => {
             let dbName = null;
 
             try {
-                // Busca documento na coleção 'colaboradores' usando o UID do Auth
                 const collabDocRef = doc(db, "colaboradores", user.uid);
                 const collabSnap = await getDoc(collabDocRef);
 
                 if (collabSnap.exists()) {
                     const data = collabSnap.data();
-                    // Tenta pegar o nome do campo 'nome' ou 'name'
                     dbName = data.nome || data.name;
                     console.log("Colaborador encontrado no DB:", dbName);
                 } else {
@@ -124,7 +137,6 @@ onAuthStateChanged(auth, async (user) => {
                 console.error("Erro ao buscar dados do colaborador:", e);
             }
 
-            // Define o nome: Prioridade para o DB, senão extrai do e-mail
             const finalName = dbName || resolveCollaboratorName(user.email);
             
             currentUserCollab = finalName;
@@ -280,7 +292,7 @@ btnConfirmCollab.addEventListener('click', async () => {
 
     if(!email || !pass) return alert("Preencha todos os campos.");
 
-    // Trava de Domínio
+    // Trava de Domínio (Apenas para o botão de Colaborador)
     if (!email.toLowerCase().endsWith('@sitelbra.com.br')) {
         alert("Acesso restrito: Utilize seu e-mail corporativo (@sitelbra.com.br).");
         return;
