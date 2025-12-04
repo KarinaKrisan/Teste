@@ -35,14 +35,18 @@ let currentDay = new Date().getDate();
 // Data System
 const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const systemYear = currentDateObj.getFullYear();
-const systemMonth = currentDateObj.getMonth(); 
 
+// Lista expandida de meses disponíveis para navegação
 const availableMonths = [
-    { year: 2025, month: 10 }, { year: 2025, month: 11 }, 
-    { year: 2026, month: 0 }, { year: 2026, month: 1 }, { year: 2026, month: 2 }
+    { label: "Novembro 2025", year: 2025, month: 10 },
+    { label: "Dezembro 2025", year: 2025, month: 11 }, 
+    { label: "Janeiro 2026", year: 2026, month: 0 }, 
+    { label: "Fevereiro 2026", year: 2026, month: 1 }, 
+    { label: "Março 2026", year: 2026, month: 2 }
 ];
-let selectedMonthObj = availableMonths.find(m => m.year === systemYear && m.month === systemMonth) || availableMonths[0];
+
+// Tenta achar o mês atual, senão pega Dezembro 2025 como padrão
+let selectedMonthObj = availableMonths.find(m => m.year === currentDateObj.getFullYear() && m.month === currentDateObj.getMonth()) || availableMonths[1];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
@@ -96,9 +100,8 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
-
-        // 1. ADMIN
+        
+        // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -114,11 +117,12 @@ onAuthStateChanged(auth, async (user) => {
         if (isDatabaseAdmin) {
             setAdminMode(true);
             revealApp();
+            renderMonthSelector(); // Renderiza o seletor
             loadDataFromCloud();
             return;
         }
 
-        // 2. COLABORADOR
+        // 2. COLLAB CHECK
         let isDatabaseCollab = false;
         let dbName = null;
         try {
@@ -131,13 +135,11 @@ onAuthStateChanged(auth, async (user) => {
                 const data = collabDoc.data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
-            } 
-            else if (!snapCLower.empty) {
+            } else if (!snapCLower.empty) {
                 const data = snapCLower.docs[0].data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
-            }
-            else if (!snapCUpper.empty) {
+            } else if (!snapCUpper.empty) {
                 const data = snapCUpper.docs[0].data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
@@ -149,11 +151,12 @@ onAuthStateChanged(auth, async (user) => {
             currentUserCollab = finalName;
             setupCollabMode(currentUserCollab);
             revealApp();
+            renderMonthSelector(); // Renderiza o seletor
             loadDataFromCloud();
             return;
         }
 
-        alert(`ERRO DE LOGIN:\n\nUsuario: ${userEmail}\nUID: ${user.uid}\n\nO sistema tentou buscar pelo ID e pelo E-mail, mas o Firebase não retornou o documento.`);
+        alert(`ERRO DE LOGIN: Usuário não encontrado no banco de dados.`);
         signOut(auth);
         hideApp();
 
@@ -271,10 +274,49 @@ document.getElementById('btnCollabLogout')?.addEventListener('click', () => sign
 
 
 // ==========================================
-// 6. FIRESTORE DATA (ESCALA)
+// 6. GESTÃO DE DADOS E MÊS
 // ==========================================
+
+// Função que cria o seletor de mês na interface
+function renderMonthSelector() {
+    const container = document.getElementById('monthSelectorContainer');
+    if(!container) return;
+
+    // Se já existe, não recria, apenas atualiza
+    if(container.innerHTML !== '') return;
+
+    const select = document.createElement('select');
+    select.className = "bg-[#1A1C2E] border border-cronos-border text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5 shadow-lg font-bold";
+    
+    availableMonths.forEach((m, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = m.label;
+        if (m.year === selectedMonthObj.year && m.month === selectedMonthObj.month) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+
+    select.addEventListener('change', (e) => {
+        const index = parseInt(e.target.value);
+        selectedMonthObj = availableMonths[index];
+        
+        // Reseta dados para evitar mistura
+        rawSchedule = {};
+        scheduleData = {};
+        
+        // Recarrega
+        loadDataFromCloud();
+    });
+
+    container.appendChild(select);
+}
+
 async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
+    console.log("Carregando escala:", docId);
+    
     try {
         const docRef = doc(db, "escalas", docId);
         const docSnap = await getDoc(docRef);
@@ -285,14 +327,24 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect(); 
             
-            if (!isAdmin && currentUserCollab && scheduleData[currentUserCollab]) {
+            if (!isAdmin && currentUserCollab) {
+                // Tenta resolver o nome novamente com os novos dados
+                const betterName = resolveCollaboratorName(auth.currentUser.email);
+                if(betterName) currentUserCollab = betterName;
                 setupCollabMode(currentUserCollab);
             }
         } else {
-            console.log("Nenhum documento encontrado.");
+            console.log("Nenhum documento encontrado para este mês.");
             rawSchedule = {}; 
+            scheduleData = {}; // Limpa dados antigos
             processScheduleData(); 
             updateDailyView();
+            initSelect();
+            
+            // Se for colaborador, limpa a tela dele
+            if (!isAdmin && currentUserCollab) {
+                setupCollabMode(currentUserCollab);
+            }
         }
     } catch (e) {
         console.error("Erro ao baixar dados:", e);
@@ -553,7 +605,6 @@ function applyScheduleChange(req) {
 // 9. FUNÇÕES DE RENDERIZAÇÃO E PROCESSAMENTO
 // ==========================================
 
-// Processa dados brutos do Firebase
 function processScheduleData() {
     scheduleData = {};
     if (!rawSchedule) return;
@@ -567,7 +618,6 @@ function processScheduleData() {
     });
 }
 
-// Atualiza a Visão Diária (KPIs e Gráfico)
 function updateDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     const day = currentDay;
@@ -620,7 +670,6 @@ function updateDailyView() {
     updateChart(cWorking, cOff, cOffShift, cVacation);
 }
 
-// Inicializa Select de Colaboradores (COM LÓGICA DE RESTRIÇÃO)
 function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
@@ -661,13 +710,12 @@ function initSelect() {
     });
 }
 
-// ==========================================
-// RENDERIZAÇÃO CARDS FIM DE SEMANA (ATUALIZADO)
-// ==========================================
 function renderWeekendModules(name) {
     const container = document.getElementById('weekendPlantaoContainer');
     if(!container) return;
     container.innerHTML = '';
+
+    if(!scheduleData[name]) return;
 
     const schedule = scheduleData[name].schedule;
     let hasWeekendWork = false;
@@ -683,7 +731,6 @@ function renderWeekendModules(name) {
             const dayName = dayOfWeek === 0 ? 'Domingo' : 'Sábado';
             const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
 
-            // --- BUSCA COLEGAS QUE TAMBÉM TRABALHAM ('T') NESTE DIA ---
             const colleagues = [];
             Object.keys(scheduleData).forEach(peerName => {
                 if (peerName !== name && scheduleData[peerName].schedule[index] === 'T') {
@@ -691,7 +738,6 @@ function renderWeekendModules(name) {
                 }
             });
 
-            // GERA O HTML DOS COLEGAS COM O MESMO ESTILO DO "ESCALADO"
             let colleaguesHtml = '';
             if (colleagues.length > 0) {
                 colleaguesHtml = `<div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2">`;
@@ -712,7 +758,6 @@ function renderWeekendModules(name) {
             
             card.innerHTML = `
                 <div class="absolute right-0 top-0 w-16 h-16 bg-orange-500/10 rounded-bl-full transition-all group-hover:bg-orange-500/20 pointer-events-none"></div>
-                
                 <div class="flex items-center justify-between relative z-10">
                     <div>
                         <p class="text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">${dayName}</p>
@@ -722,7 +767,6 @@ function renderWeekendModules(name) {
                         <i class="fas fa-briefcase"></i> <span>Escalado</span>
                     </div>
                 </div>
-
                 ${colleaguesHtml}
             `;
             container.appendChild(card);
@@ -739,7 +783,9 @@ function renderWeekendModules(name) {
     }
 }
 
-// Renderiza Calendário Individual
+// -----------------------------------------------------
+// CORREÇÃO CRÍTICA DO CALENDÁRIO (DIAS DA SEMANA)
+// -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
     const grid = document.getElementById('calendarGrid');
@@ -752,11 +798,28 @@ function renderPersonalCalendar(name) {
     
     if(infoCard) {
         infoCard.classList.remove('hidden');
-        infoCard.innerHTML = `<h3 class="text-lg font-bold text-white">${name}</h3><p class="text-sm text-gray-400">Escala Mensal</p>`;
+        infoCard.innerHTML = `
+            <h3 class="text-lg font-bold text-white">${name}</h3>
+            <p class="text-sm text-gray-400">${selectedMonthObj.label}</p>
+        `;
     }
 
+    if(!scheduleData[name]) return;
     const schedule = scheduleData[name].schedule;
     
+    // --- LÓGICA DE ALINHAMENTO ---
+    // Descobre em qual dia da semana cai o dia 1º do mês selecionado
+    // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+    const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
+
+    // Adiciona células vazias (fillers) antes do dia 1
+    for (let i = 0; i < firstDayOfWeek; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = "calendar-cell bg-transparent border-none pointer-events-none"; // Célula invisível
+        grid.appendChild(emptyCell);
+    }
+
+    // Renderiza os dias reais
     for (let i = 0; i < schedule.length; i++) {
         const status = schedule[i] || '-';
         const dayNum = i + 1;
@@ -779,11 +842,9 @@ function renderPersonalCalendar(name) {
         grid.appendChild(cell);
     }
 
-    // CHAMA A RENDERIZAÇÃO DOS FINS DE SEMANA
     renderWeekendModules(name);
 }
 
-// Atualiza Gráfico Doughnut
 function updateChart(working, off, offShift, vacation) {
     const ctx = document.getElementById('dailyChart');
     if (!ctx) return;
@@ -817,7 +878,6 @@ function updateChart(working, off, offShift, vacation) {
 // 10. BOOTSTRAP
 // ==========================================
 function initGlobal() {
-    // Abas
     document.querySelectorAll('.tab-button').forEach(b => {
         b.addEventListener('click', () => {
             document.querySelectorAll('.tab-button').forEach(x=>x.classList.remove('active'));
@@ -829,7 +889,7 @@ function initGlobal() {
 
     const ds = document.getElementById('dateSlider');
     if (ds) {
-        ds.max = 31; // Simplificado
+        ds.max = 31; 
         ds.addEventListener('input', e => { 
             currentDay = parseInt(e.target.value); 
             updateDailyView(); 
