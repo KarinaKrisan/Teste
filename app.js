@@ -55,6 +55,7 @@ function normalizeString(str) {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+// Procura o nome na lista de escalas (scheduleData) baseado no email
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     const prefix = email.split('@')[0];
@@ -68,6 +69,7 @@ function resolveCollaboratorName(email) {
         if (matchKey) return matchKey;
     }
     
+    // Fallback apenas visual
     return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -98,9 +100,7 @@ onAuthStateChanged(auth, async (user) => {
         const userEmail = user.email.trim();
         console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
 
-        // =====================================================
-        // ESTRATÉGIA 1: ADMINISTRADOR
-        // =====================================================
+        // 1. VERIFICAÇÃO DE ADMIN
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -120,9 +120,7 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // =====================================================
-        // ESTRATÉGIA 2: COLABORADOR
-        // =====================================================
+        // 2. VERIFICAÇÃO DE COLABORADOR
         let isDatabaseCollab = false;
         let dbName = null;
         
@@ -188,6 +186,7 @@ function setAdminMode(active) {
     }
 }
 
+// === SETUP COLABORADOR (COM RESTRIÇÃO) ===
 function setupCollabMode(name) {
     isAdmin = false;
     const adminToolbar = document.getElementById('adminToolbar');
@@ -206,17 +205,23 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
+    // CONFIGURAÇÃO DO MENU SUSPENSO
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
-        // Limpa e trava o select para o colaborador
+        // Limpa tudo
         empSelect.innerHTML = '';
+        
+        // Adiciona apenas o nome do colaborador logado
         const opt = document.createElement('option');
         opt.value = name;
         opt.textContent = name;
         empSelect.appendChild(opt);
+        
+        // Seleciona e trava
         empSelect.value = name;
         empSelect.disabled = true; 
         
+        // Se os dados já existem, desenha a tela
         if (scheduleData && scheduleData[name]) {
             renderPersonalCalendar(name);
         }
@@ -290,11 +295,17 @@ async function loadDataFromCloud() {
             rawSchedule = docSnap.data();
             processScheduleData(); 
             updateDailyView();
-            initSelect(); 
+            initSelect(); // Atualiza select (Admin ou Collab)
             
-            // Força renderização do colaborador logado
-            if (!isAdmin && currentUserCollab && scheduleData[currentUserCollab]) {
-                setupCollabMode(currentUserCollab);
+            // Lógica essencial: se for colaborador, recalcula o nome com base na escala carregada
+            const user = auth.currentUser;
+            if (user && !isAdmin && user.email) {
+                const betterName = resolveCollaboratorName(user.email);
+                // Se o nome resolvido for diferente ou se a tela não atualizou, força
+                if (betterName && scheduleData[betterName]) {
+                    currentUserCollab = betterName;
+                    setupCollabMode(currentUserCollab);
+                }
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -670,7 +681,7 @@ function initSelect() {
 }
 
 // ==========================================
-// NOVA FUNÇÃO: RENDERIZA CARDS DE FIM DE SEMANA
+// RENDERIZAÇÃO CARDS FIM DE SEMANA
 // ==========================================
 function renderWeekendModules(name) {
     const container = document.getElementById('weekendPlantaoContainer');
@@ -683,7 +694,7 @@ function renderWeekendModules(name) {
     schedule.forEach((status, index) => {
         const day = index + 1;
         const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
-        const dayOfWeek = date.getDay(); // 0 = Dom, 6 = Sáb
+        const dayOfWeek = date.getDay(); // 0=Dom, 6=Sáb
 
         if ((dayOfWeek === 0 || dayOfWeek === 6) && status === 'T') {
             hasWeekendWork = true;
