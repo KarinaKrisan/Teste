@@ -73,19 +73,16 @@ function hideApp() {
 // === AUTH LISTENER PRINCIPAL ===
 onAuthStateChanged(auth, (user) => {
     if (user) {
-        // Se o email for admin@cronos.com (ou outro criterio), ativa modo Admin
+        // 1. ADMIN CHECK
         if (user.email === 'admin@cronos.com') {
             setAdminMode(true);
             revealApp();
         } else {
-            // Lógica para extrair nome do colaborador do email
-            const nameFromEmail = user.email.split('@')[0];
-            const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+            // 2. COLABORADOR CHECK
+            // Tenta resolver o nome baseado no e-mail (ex: karina.krisan -> Karina Krisan)
+            const resolvedName = resolveCollaboratorName(user.email);
             
-            // Busca fuzzy para encontrar o nome na escala
-            const matchName = Object.keys(scheduleData).find(n => n.toLowerCase().includes(nameFromEmail.toLowerCase()));
-            
-            currentUserCollab = matchName || formattedName;
+            currentUserCollab = resolvedName;
             setupCollabMode(currentUserCollab);
             revealApp();
         }
@@ -95,11 +92,34 @@ onAuthStateChanged(auth, (user) => {
     updateDailyView();
 });
 
+// Função auxiliar para achar o nome na lista baseado no email
+function resolveCollaboratorName(email) {
+    if(!email) return "Colaborador";
+    
+    // Remove o dominio e substitui pontos por espaços
+    // ex: karina.krisan@sitelbra.com.br -> karina krisan
+    const rawName = email.split('@')[0].replace(/\./g, ' ');
+    
+    // Tenta achar match exato ou parcial nas chaves do scheduleData (dados do firebase)
+    if (Object.keys(scheduleData).length > 0) {
+        const match = Object.keys(scheduleData).find(dbName => 
+            dbName.toLowerCase().includes(rawName.toLowerCase()) || 
+            rawName.toLowerCase().includes(dbName.toLowerCase())
+        );
+        if (match) return match;
+    }
+
+    // Fallback: Formata bonito (Karina Krisan) se não achar no banco ainda
+    return rawName.split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
 function setAdminMode(active) {
     isAdmin = active;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); // Botão da Visão Diária
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
     
     if(active) {
         adminToolbar.classList.remove('hidden');
@@ -108,7 +128,6 @@ function setAdminMode(active) {
         document.getElementById('collabEditHint').classList.add('hidden');
         document.body.style.paddingBottom = "100px";
         
-        // Admin deve ver a Visão Diária
         if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
         
         startRequestsListener();
@@ -122,7 +141,7 @@ function setupCollabMode(name) {
     isAdmin = false;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); // Botão da Visão Diária
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
     
     adminToolbar.classList.add('hidden');
     collabToolbar.classList.remove('hidden');
@@ -132,17 +151,21 @@ function setupCollabMode(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.body.style.paddingBottom = "100px";
 
-    // COLABORADOR NÃO VÊ A VISÃO DIÁRIA (REGRA 1)
+    // COLABORADOR NÃO VÊ A VISÃO DIÁRIA
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
     // Auto-select na view pessoal
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
+        // Tenta setar o valor
         empSelect.value = name;
-        if(empSelect.selectedIndex === -1) {
+        
+        // Se não pegou (valor não existe exato nas options), tenta busca fuzzy nas options
+        if(empSelect.selectedIndex === -1 && name) {
              for (let i = 0; i < empSelect.options.length; i++) {
                 if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
                     empSelect.selectedIndex = i;
+                    empSelect.value = empSelect.options[i].value; // Garante que o value fique correto
                     break;
                 }
             }
@@ -181,13 +204,19 @@ if(btnLandingCollab) {
 
 btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
-// Ação de Login do Colaborador
+// Ação de Login do Colaborador (COM VALIDAÇÃO DE DOMÍNIO)
 btnConfirmCollab.addEventListener('click', async () => {
-    const email = document.getElementById('collabEmailInput').value;
+    const email = document.getElementById('collabEmailInput').value.trim();
     const pass = document.getElementById('collabPassInput').value;
     const btn = btnConfirmCollab;
 
     if(!email || !pass) return alert("Preencha todos os campos.");
+
+    // --- REGRA DE NEGÓCIO: Apenas @sitelbra.com.br ---
+    if (!email.toLowerCase().endsWith('@sitelbra.com.br')) {
+        alert("Acesso restrito: Utilize seu e-mail corporativo (@sitelbra.com.br).");
+        return;
+    }
 
     try {
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
@@ -196,7 +225,9 @@ btnConfirmCollab.addEventListener('click', async () => {
         collabModal.classList.add('hidden');
     } catch (e) {
         console.error(e);
-        alert("Erro no login: Verifique e-mail e senha.");
+        let msg = "Erro no login.";
+        if(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
+        alert(msg);
     } finally {
         btn.innerHTML = 'Entrar';
     }
@@ -205,7 +236,6 @@ btnConfirmCollab.addEventListener('click', async () => {
 // Logout Colaborador
 document.getElementById('btnCollabLogout').addEventListener('click', () => {
     signOut(auth);
-    // onAuthStateChanged chamará hideApp() automaticamente
 });
 
 
@@ -223,6 +253,19 @@ async function loadDataFromCloud() {
             processScheduleData(); 
             updateDailyView();
             initSelect();
+            
+            // RE-RESOLUÇÃO DE NOME:
+            // Se o usuário já estiver logado quando os dados chegarem,
+            // tentamos melhorar o match do nome agora que temos a lista real do banco.
+            const user = auth.currentUser;
+            if (user && !isAdmin && user.email) {
+                const betterName = resolveCollaboratorName(user.email);
+                if (betterName !== currentUserCollab) {
+                    currentUserCollab = betterName;
+                    setupCollabMode(currentUserCollab); // Atualiza a UI com o nome correto
+                }
+            }
+
         } else {
             console.log("Nenhum documento encontrado.");
             rawSchedule = {}; 
@@ -282,7 +325,7 @@ function openRequestModal(dayIndex) {
     targetPeerSelect.innerHTML = '<option value="">Selecione um colega...</option>';
     
     Object.keys(scheduleData).sort().forEach(name => {
-        // Mostra todos exceto o próprio usuário (busca parcial para garantir)
+        // Mostra todos exceto o próprio usuário
         if(!name.toLowerCase().includes(currentUserCollab.toLowerCase())) {
             const opt = document.createElement('option');
             opt.value = name; opt.textContent = name;
@@ -334,14 +377,14 @@ btnSubmitReq.addEventListener('click', async () => {
         const target = targetPeerSelect.value;
         if(!target) return alert("Selecione um colega.");
         reqData.target = target;
-        // FLUXO: Colega primeiro (pendente_colega)
+        // FLUXO: Colega primeiro
         reqData.status = 'pendente_colega'; 
         reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
     } else {
         const newShift = document.getElementById('newShiftInput').value;
         if(!newShift) return alert("Digite o turno desejado.");
         reqData.newDetail = newShift;
-        // FLUXO: Direto para o Líder (pendente_lider)
+        // FLUXO: Direto para o Líder
         reqData.status = 'pendente_lider'; 
         reqData.description = `solicita mudança de turno para: ${newShift}`;
     }
@@ -390,20 +433,18 @@ function startRequestsListener() {
             let canAction = false;
             
             if (isAdmin) {
-                // Admin vê solicitações que já passaram pelo colega ou são diretas
                 if (req.status === 'pendente_lider') {
                     show = true;
                     canAction = true;
                     count++;
                 }
             } else if (currentUserCollab) {
-                // Colaborador (ex: Gabriel) vê solicitações enviadas PARA ele (ex: de Karina)
+                // Filtro flexível para nome do colaborador
                 if (req.status === 'pendente_colega' && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = true;
                     count++;
                 }
-                // Vê status dos próprios pedidos (mas não age)
                 if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = false;
@@ -475,13 +516,10 @@ window.rejectRequest = async (id) => {
 }
 
 window.acceptRequest = async (id, currentStatus) => {
-    // 1. FLUXO COLEGA (Gabriel aceita troca com Karina)
-    // O status muda para 'pendente_lider', enviando para o painel do Admin.
     if (currentStatus === 'pendente_colega') {
         await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
         alert("Você concordou! Agora a solicitação foi para o líder.");
     }
-    // 2. FLUXO LÍDER (Aprova troca ou mudança de turno)
     else if (currentStatus === 'pendente_lider' && isAdmin) {
         if(!confirm("Aprovar e aplicar alterações na escala?")) return;
         
@@ -500,7 +538,6 @@ function applyScheduleChange(req) {
     const idx = req.dayIndex;
     
     if (req.type === 'troca_folga') {
-        // Troca simples de status
         const statusA = rawSchedule[req.requester].calculatedSchedule[idx];
         const statusB = rawSchedule[req.target].calculatedSchedule[idx];
         
@@ -511,7 +548,6 @@ function applyScheduleChange(req) {
         scheduleData[req.target].schedule[idx] = statusA;
 
     } else if (req.type === 'mudanca_turno') {
-        // Log para futura implementação complexa de horários por dia
         console.log(`Alterar turno de ${req.requester} no dia ${req.dayLabel} para ${req.newDetail}`);
     }
 }
