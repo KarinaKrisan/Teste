@@ -71,17 +71,32 @@ function hideApp() {
 }
 
 // === AUTH LISTENER PRINCIPAL ===
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // 1. ADMIN CHECK (Supremo)
-        // Lista de e-mails com permissão total de Admin
-        const adminEmails = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
+        // --- LÓGICA DE VERIFICAÇÃO DE ADMIN (DATABASE + HARDCODED) ---
+        let isDatabaseAdmin = false;
+        
+        try {
+            // Verifica se existe um documento com o ID igual ao email na coleção 'administradores'
+            const adminDocRef = doc(db, "administradores", user.email);
+            const adminDocSnap = await getDoc(adminDocRef);
+            
+            if (adminDocSnap.exists()) {
+                isDatabaseAdmin = true;
+            }
+        } catch (error) {
+            console.error("Erro ao verificar permissões de admin:", error);
+        }
 
-        if (adminEmails.includes(user.email)) {
+        // Mantemos os admins estáticos como fallback/supremos
+        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
+
+        if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
+            // É ADMIN (Base de dados ou Lista Estática)
             setAdminMode(true);
             revealApp();
         } else {
-            // 2. COLABORADOR CHECK
+            // NÃO É ADMIN -> Tenta carregar como COLABORADOR
             // Tenta resolver o nome baseado no e-mail (ex: karina.krisan -> Karina Krisan)
             const resolvedName = resolveCollaboratorName(user.email);
             
@@ -100,7 +115,6 @@ function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     
     // Remove o dominio e substitui pontos por espaços
-    // ex: karina.krisan@sitelbra.com.br -> karina krisan
     const rawName = email.split('@')[0].replace(/\./g, ' ');
     
     // Tenta achar match exato ou parcial nas chaves do scheduleData (dados do firebase)
@@ -112,7 +126,7 @@ function resolveCollaboratorName(email) {
         if (match) return match;
     }
 
-    // Fallback: Formata bonito (Karina Krisan) se não achar no banco ainda
+    // Fallback: Formata bonito
     return rawName.split(' ')
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
@@ -168,7 +182,7 @@ function setupCollabMode(name) {
              for (let i = 0; i < empSelect.options.length; i++) {
                 if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
                     empSelect.selectedIndex = i;
-                    empSelect.value = empSelect.options[i].value; // Garante que o value fique correto
+                    empSelect.value = empSelect.options[i].value; 
                     break;
                 }
             }
