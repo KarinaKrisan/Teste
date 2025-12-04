@@ -73,8 +73,11 @@ function hideApp() {
 // === AUTH LISTENER PRINCIPAL ===
 onAuthStateChanged(auth, (user) => {
     if (user) {
-        // 1. ADMIN CHECK
-        if (user.email === 'admin@cronos.com') {
+        // 1. ADMIN CHECK (Supremo)
+        // Lista de e-mails com permissão total de Admin
+        const adminEmails = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
+
+        if (adminEmails.includes(user.email)) {
             setAdminMode(true);
             revealApp();
         } else {
