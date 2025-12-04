@@ -95,34 +95,36 @@ onAuthStateChanged(auth, async (user) => {
             console.error("Erro ao verificar admin:", error);
         }
 
-        // Admins Supremos (Hardcoded)
-        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
+        // Admins Supremos (Hardcoded) - CORRIGIDO gamil.com para gmail.com
+        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gmail.com'];
 
         if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
             console.log("Acesso concedido: ADMIN");
             setAdminMode(true);
             revealApp();
         } else {
-            // --- 2. VERIFICAÇÃO DE COLABORADOR (COLEÇÃO 'colaboradores' + BUSCA INTELIGENTE) ---
-            console.log("Verificando identidade do colaborador...");
+            // --- 2. VERIFICAÇÃO DE COLABORADOR (COLEÇÃO 'colaboradores') ---
+            console.log("Verificando base de colaboradores...");
             let dbName = null;
 
             try {
-                // Busca documento na coleção 'colaboradores' (Opcional, se existir cadastro formal)
+                // Busca documento na coleção 'colaboradores' usando o UID do Auth
                 const collabDocRef = doc(db, "colaboradores", user.uid);
                 const collabSnap = await getDoc(collabDocRef);
 
                 if (collabSnap.exists()) {
                     const data = collabSnap.data();
+                    // Tenta pegar o nome do campo 'nome' ou 'name'
                     dbName = data.nome || data.name;
+                    console.log("Colaborador encontrado no DB:", dbName);
+                } else {
+                    console.log("Colaborador não encontrado na base de dados pelo UID.");
                 }
             } catch (e) {
                 console.error("Erro ao buscar dados do colaborador:", e);
             }
 
-            // Define o nome: 
-            // 1. Nome explícito no banco 'colaboradores'
-            // 2. Busca inteligente baseada no e-mail contra a 'scheduleData'
+            // Define o nome: Prioridade para o DB, senão extrai do e-mail
             const finalName = dbName || resolveCollaboratorName(user.email);
             
             currentUserCollab = finalName;
