@@ -77,39 +77,25 @@ onAuthStateChanged(auth, async (user) => {
         
         let isDatabaseAdmin = false;
         
+        // --- 1. VERIFICAÇÃO DE ADMIN (COLEÇÃO 'administradores') ---
         try {
-            // VERIFICAÇÃO 1: Busca pelo UID (ID do documento = UID do Auth)
-            // Esta é a verificação correta se os IDs são iguais
+            // Verifica por UID (Prioritário)
             const adminDocRefUid = doc(db, "administradores", user.uid);
             const adminDocSnapUid = await getDoc(adminDocRefUid);
             
             if (adminDocSnapUid.exists()) {
-                console.log("Admin encontrado por UID (Document ID)");
                 isDatabaseAdmin = true;
             } else {
-                // VERIFICAÇÃO 2: Busca pelo E-mail como ID (caso antigo)
-                const adminDocRefEmail = doc(db, "administradores", user.email);
-                const adminDocSnapEmail = await getDoc(adminDocRefEmail);
-                
-                if (adminDocSnapEmail.exists()) {
-                    console.log("Admin encontrado por Email (Document ID)");
-                    isDatabaseAdmin = true;
-                } else {
-                    // VERIFICAÇÃO 3: Busca por campo 'email' dentro da coleção
-                    const q = query(collection(db, "administradores"), where("email", "==", user.email));
-                    const querySnapshot = await getDocs(q);
-                    
-                    if (!querySnapshot.empty) {
-                        console.log("Admin encontrado por Query de campo 'email'");
-                        isDatabaseAdmin = true;
-                    }
-                }
+                // Fallback: Verifica por query no campo email
+                const q = query(collection(db, "administradores"), where("email", "==", user.email));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) isDatabaseAdmin = true;
             }
         } catch (error) {
-            console.error("Erro ao verificar permissões de admin no Firestore:", error);
+            console.error("Erro ao verificar admin:", error);
         }
 
-        // Mantemos os admins estáticos como segurança extra (Super Admins)
+        // Admins Supremos (Hardcoded)
         const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
 
         if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
@@ -117,9 +103,31 @@ onAuthStateChanged(auth, async (user) => {
             setAdminMode(true);
             revealApp();
         } else {
-            console.log("Acesso concedido: COLABORADOR");
-            const resolvedName = resolveCollaboratorName(user.email);
-            currentUserCollab = resolvedName;
+            // --- 2. VERIFICAÇÃO DE COLABORADOR (COLEÇÃO 'colaboradores') ---
+            console.log("Verificando base de colaboradores...");
+            let dbName = null;
+
+            try {
+                // Busca documento na coleção 'colaboradores' usando o UID do Auth
+                const collabDocRef = doc(db, "colaboradores", user.uid);
+                const collabSnap = await getDoc(collabDocRef);
+
+                if (collabSnap.exists()) {
+                    const data = collabSnap.data();
+                    // Tenta pegar o nome do campo 'nome' ou 'name'
+                    dbName = data.nome || data.name;
+                    console.log("Colaborador encontrado no DB:", dbName);
+                } else {
+                    console.log("Colaborador não encontrado na base de dados pelo UID.");
+                }
+            } catch (e) {
+                console.error("Erro ao buscar dados do colaborador:", e);
+            }
+
+            // Define o nome: Prioridade para o DB, senão extrai do e-mail
+            const finalName = dbName || resolveCollaboratorName(user.email);
+            
+            currentUserCollab = finalName;
             setupCollabMode(currentUserCollab);
             revealApp();
         }
@@ -129,12 +137,12 @@ onAuthStateChanged(auth, async (user) => {
     updateDailyView();
 });
 
-// Função auxiliar para achar o nome na lista baseado no email
+// Função auxiliar para formatar nome do email (caso não ache no banco)
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     const rawName = email.split('@')[0].replace(/\./g, ' ');
     
-    // Busca na escala carregada
+    // Tenta achar match na escala carregada
     if (Object.keys(scheduleData).length > 0) {
         const match = Object.keys(scheduleData).find(dbName => 
             dbName.toLowerCase().includes(rawName.toLowerCase()) || 
@@ -142,7 +150,7 @@ function resolveCollaboratorName(email) {
         );
         if (match) return match;
     }
-    // Formata bonito
+    
     return rawName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -190,7 +198,7 @@ function setupCollabMode(name) {
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
         empSelect.value = name;
-        // Busca fuzzy no select
+        // Busca fuzzy no select se o nome exato não bater
         if(empSelect.selectedIndex === -1 && name) {
              for (let i = 0; i < empSelect.options.length; i++) {
                 if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
@@ -282,11 +290,8 @@ async function loadDataFromCloud() {
             // Revalida nome se user já estiver logado
             const user = auth.currentUser;
             if (user && !isAdmin && user.email) {
-                const betterName = resolveCollaboratorName(user.email);
-                if (betterName !== currentUserCollab) {
-                    currentUserCollab = betterName;
-                    setupCollabMode(currentUserCollab);
-                }
+                // Tenta recarregar modo colaborador para garantir nome certo
+                if(currentUserCollab) setupCollabMode(currentUserCollab);
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -389,13 +394,17 @@ btnSubmitReq.addEventListener('click', async () => {
         status: 'pendente' 
     };
 
+    // --- LÓGICA DE APROVAÇÃO ---
+    // Caso 1: Troca de Folga -> Vai para o Colega primeiro
     if (selectedRequestType === 'troca_folga') {
         const target = targetPeerSelect.value;
         if(!target) return alert("Selecione um colega.");
         reqData.target = target;
         reqData.status = 'pendente_colega'; 
         reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
-    } else {
+    } 
+    // Caso 2: Mudança de Turno -> Vai direto para o Líder
+    else {
         const newShift = document.getElementById('newShiftInput').value;
         if(!newShift) return alert("Digite o turno desejado.");
         reqData.newDetail = newShift;
@@ -446,17 +455,20 @@ function startRequestsListener() {
             let canAction = false;
             
             if (isAdmin) {
+                // Admin vê tudo que está pendente de líder
                 if (req.status === 'pendente_lider') {
                     show = true;
                     canAction = true;
                     count++;
                 }
             } else if (currentUserCollab) {
+                // Colaborador vê se alguém pediu troca COM ELE
                 if (req.status === 'pendente_colega' && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = true;
                     count++;
                 }
+                // Vê seus próprios pedidos
                 if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = false;
@@ -528,10 +540,12 @@ window.rejectRequest = async (id) => {
 
 window.acceptRequest = async (id, currentStatus) => {
     if (currentStatus === 'pendente_colega') {
+        // Colega aceitou -> Envia para o Líder
         await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
         alert("Você concordou! Agora a solicitação foi para o líder.");
     }
     else if (currentStatus === 'pendente_lider' && isAdmin) {
+        // Líder aprovou -> Aplica mudanças
         if(!confirm("Aprovar e aplicar alterações na escala?")) return;
         
         const reqSnap = await getDoc(doc(db, "requests", id));
