@@ -78,12 +78,11 @@ onAuthStateChanged(auth, (user) => {
             setAdminMode(true);
             revealApp();
         } else {
-            // Caso contrário, é um colaborador.
-            // Para demo, vamos extrair o nome do email (ex: gabriel@cronos.com -> Gabriel)
+            // Lógica para extrair nome do colaborador do email
             const nameFromEmail = user.email.split('@')[0];
             const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
             
-            // Tenta achar o nome exato na escala (busca fuzzy simples)
+            // Busca fuzzy para encontrar o nome na escala
             const matchName = Object.keys(scheduleData).find(n => n.toLowerCase().includes(nameFromEmail.toLowerCase()));
             
             currentUserCollab = matchName || formattedName;
@@ -100,6 +99,7 @@ function setAdminMode(active) {
     isAdmin = active;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); // Botão da Visão Diária
     
     if(active) {
         adminToolbar.classList.remove('hidden');
@@ -107,6 +107,10 @@ function setAdminMode(active) {
         document.getElementById('adminEditHint').classList.remove('hidden');
         document.getElementById('collabEditHint').classList.add('hidden');
         document.body.style.paddingBottom = "100px";
+        
+        // Admin deve ver a Visão Diária
+        if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
+        
         startRequestsListener();
     } else {
         adminToolbar.classList.add('hidden');
@@ -118,6 +122,7 @@ function setupCollabMode(name) {
     isAdmin = false;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); // Botão da Visão Diária
     
     adminToolbar.classList.add('hidden');
     collabToolbar.classList.remove('hidden');
@@ -127,11 +132,13 @@ function setupCollabMode(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.body.style.paddingBottom = "100px";
 
+    // COLABORADOR NÃO VÊ A VISÃO DIÁRIA (REGRA 1)
+    if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
+
     // Auto-select na view pessoal
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
         empSelect.value = name;
-        // Se o nome exato não estiver no select (ex: select tem "Gabriel Procopio" e email deu "Gabriel"), tenta achar parcial
         if(empSelect.selectedIndex === -1) {
              for (let i = 0; i < empSelect.options.length; i++) {
                 if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
@@ -143,7 +150,7 @@ function setupCollabMode(name) {
         empSelect.dispatchEvent(new Event('change'));
     }
 
-    // Força ir para a tab pessoal
+    // Força ir para a tab pessoal automaticamente
     const personalTab = document.querySelector('[data-tab="personal"]');
     if(personalTab) personalTab.click();
     
@@ -327,13 +334,15 @@ btnSubmitReq.addEventListener('click', async () => {
         const target = targetPeerSelect.value;
         if(!target) return alert("Selecione um colega.");
         reqData.target = target;
-        reqData.status = 'pendente_colega'; // Vai para o colega primeiro
+        // FLUXO: Colega primeiro (pendente_colega)
+        reqData.status = 'pendente_colega'; 
         reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
     } else {
         const newShift = document.getElementById('newShiftInput').value;
         if(!newShift) return alert("Digite o turno desejado.");
         reqData.newDetail = newShift;
-        reqData.status = 'pendente_lider'; // Vai direto pro lider
+        // FLUXO: Direto para o Líder (pendente_lider)
+        reqData.status = 'pendente_lider'; 
         reqData.description = `solicita mudança de turno para: ${newShift}`;
     }
 
@@ -381,21 +390,20 @@ function startRequestsListener() {
             let canAction = false;
             
             if (isAdmin) {
-                // Admin vê solicitações pendentes de líder
+                // Admin vê solicitações que já passaram pelo colega ou são diretas
                 if (req.status === 'pendente_lider') {
                     show = true;
                     canAction = true;
                     count++;
                 }
             } else if (currentUserCollab) {
-                // Colaborador vê solicitações de troca enviadas PARA ele
-                // (Busca parcial para caso o nome no select seja "Gabriel Procopio" e no request "Gabriel")
+                // Colaborador (ex: Gabriel) vê solicitações enviadas PARA ele (ex: de Karina)
                 if (req.status === 'pendente_colega' && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = true;
                     count++;
                 }
-                // Vê status dos próprios pedidos
+                // Vê status dos próprios pedidos (mas não age)
                 if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = false;
@@ -467,12 +475,13 @@ window.rejectRequest = async (id) => {
 }
 
 window.acceptRequest = async (id, currentStatus) => {
-    // COLEGA ACEITANDO
+    // 1. FLUXO COLEGA (Gabriel aceita troca com Karina)
+    // O status muda para 'pendente_lider', enviando para o painel do Admin.
     if (currentStatus === 'pendente_colega') {
         await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
         alert("Você concordou! Agora a solicitação foi para o líder.");
     }
-    // LÍDER APROVANDO
+    // 2. FLUXO LÍDER (Aprova troca ou mudança de turno)
     else if (currentStatus === 'pendente_lider' && isAdmin) {
         if(!confirm("Aprovar e aplicar alterações na escala?")) return;
         
