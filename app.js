@@ -3,7 +3,7 @@
 // 1. IMPORTAÇÕES FIREBASE
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 // ==========================================
@@ -30,7 +30,6 @@ let currentUserCollab = null; // Nome do colaborador logado
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
-let isTrendMode = false;
 let currentDay = new Date().getDate();
 
 // Data System
@@ -39,7 +38,7 @@ const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho
 const systemYear = currentDateObj.getFullYear();
 const systemMonth = currentDateObj.getMonth(); 
 
-// Lista de meses disponíveis (simulada ou dinâmica)
+// Lista de meses disponíveis
 const availableMonths = [
     { year: 2025, month: 10 }, { year: 2025, month: 11 }, 
     { year: 2026, month: 0 }, { year: 2026, month: 1 }, { year: 2026, month: 2 }
@@ -51,62 +50,89 @@ const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sáb
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
 // ==========================================
-// 4. INICIALIZAÇÃO E AUTH
+// 4. GESTÃO DE ACESSO (Landing Page vs App)
 // ==========================================
-const adminToolbar = document.getElementById('adminToolbar');
-const collabToolbar = document.getElementById('collabToolbar');
-const authButtons = document.getElementById('authButtonsContainer');
+const landingPage = document.getElementById('landingPage');
+const appInterface = document.getElementById('appInterface');
 
-// Logout Admin
-document.getElementById('btnLogout').addEventListener('click', () => { signOut(auth); window.location.reload(); });
+function revealApp() {
+    landingPage.classList.add('hidden');
+    appInterface.classList.remove('hidden');
+    // Pequeno delay para animação de opacidade
+    setTimeout(() => {
+        appInterface.classList.remove('opacity-0');
+    }, 50);
+}
+
+function hideApp() {
+    appInterface.classList.add('opacity-0');
+    setTimeout(() => {
+        appInterface.classList.add('hidden');
+        landingPage.classList.remove('hidden');
+    }, 500);
+}
 
 // Auth Listener (Admin Real)
 onAuthStateChanged(auth, (user) => {
     if (user) {
         setAdminMode(true);
+        revealApp(); // Se já estiver logado, libera o app
     } else {
-        setAdminMode(false);
+        // Se não tiver user e não tiver collab selecionado, mostra Landing
+        if(!currentUserCollab) {
+            hideApp();
+        }
     }
     updateDailyView();
 });
 
 function setAdminMode(active) {
     isAdmin = active;
+    const adminToolbar = document.getElementById('adminToolbar');
+    const collabToolbar = document.getElementById('collabToolbar');
+    
     if(active) {
         adminToolbar.classList.remove('hidden');
-        collabToolbar.classList.add('hidden'); // Prioridade Admin
-        authButtons.classList.add('hidden');
+        collabToolbar.classList.add('hidden'); 
         document.getElementById('adminEditHint').classList.remove('hidden');
         document.getElementById('collabEditHint').classList.add('hidden');
         document.body.style.paddingBottom = "100px";
-        startRequestsListener(); // Inicia listener de notificações do admin
+        startRequestsListener();
     } else {
         adminToolbar.classList.add('hidden');
-        authButtons.classList.remove('hidden');
         document.getElementById('adminEditHint').classList.add('hidden');
-        document.body.style.paddingBottom = "0";
     }
 }
+
+// Logout Admin
+const btnLogout = document.getElementById('btnLogout');
+if(btnLogout) {
+    btnLogout.addEventListener('click', () => { 
+        signOut(auth); 
+    });
+}
+
 
 // ==========================================
 // 5. MODO COLABORADOR (SIMULADO)
 // ==========================================
 const collabModal = document.getElementById('collabLoginModal');
-const btnAccessCollab = document.getElementById('btnAccessCollab');
+const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
 const collabSelect = document.getElementById('collabLoginSelect');
 
-btnAccessCollab.addEventListener('click', () => {
-    // Popula select com nomes da escala
-    collabSelect.innerHTML = '<option value="">Selecione seu nome...</option>';
-    Object.keys(scheduleData).sort().forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name; opt.textContent = name;
-        collabSelect.appendChild(opt);
+if(btnLandingCollab) {
+    btnLandingCollab.addEventListener('click', () => {
+        collabSelect.innerHTML = '<option value="">Selecione seu nome...</option>';
+        Object.keys(scheduleData).sort().forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name; opt.textContent = name;
+            collabSelect.appendChild(opt);
+        });
+        collabModal.classList.remove('hidden');
     });
-    collabModal.classList.remove('hidden');
-});
+}
 
 btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
@@ -118,31 +144,38 @@ btnConfirmCollab.addEventListener('click', () => {
     collabModal.classList.add('hidden');
     
     // UI Updates
+    const collabToolbar = document.getElementById('collabToolbar');
     collabToolbar.classList.remove('hidden');
-    authButtons.classList.add('hidden');
+    
     document.getElementById('collabNameDisplay').textContent = name;
     document.getElementById('collabEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
     
     // Auto-select na view pessoal
     const empSelect = document.getElementById('employeeSelect');
-    empSelect.value = name;
-    // Dispara evento change manualmente
-    empSelect.dispatchEvent(new Event('change'));
+    if(empSelect) {
+        empSelect.value = name;
+        empSelect.dispatchEvent(new Event('change'));
+    }
+    
+    revealApp();
     
     // Força view pessoal
-    document.querySelector('[data-tab="personal"]').click();
+    const personalTab = document.querySelector('[data-tab="personal"]');
+    if(personalTab) personalTab.click();
     
-    startRequestsListener(); // Inicia listener para o colaborador
+    startRequestsListener();
 });
 
 document.getElementById('btnCollabLogout').addEventListener('click', () => {
     currentUserCollab = null;
+    const collabToolbar = document.getElementById('collabToolbar');
     collabToolbar.classList.add('hidden');
-    authButtons.classList.remove('hidden');
     document.getElementById('collabEditHint').classList.add('hidden');
     document.body.style.paddingBottom = "0";
-    window.location.reload();
+    
+    hideApp();
+    window.location.reload(); 
 });
 
 
@@ -204,7 +237,7 @@ const btnCloseReq = document.getElementById('btnCloseRequestModal');
 const btnSubmitReq = document.getElementById('btnSubmitRequest');
 const targetPeerSelect = document.getElementById('targetPeerSelect');
 let selectedRequestDate = null;
-let selectedRequestType = 'troca_folga'; // default
+let selectedRequestType = 'troca_folga'; 
 
 // Abrir Modal de Solicitação
 function openRequestModal(dayIndex) {
@@ -218,7 +251,6 @@ function openRequestModal(dayIndex) {
     document.getElementById('newShiftInput').value = '';
     targetPeerSelect.innerHTML = '<option value="">Selecione um colega...</option>';
     
-    // Popula colegas (exceto ele mesmo)
     Object.keys(scheduleData).sort().forEach(name => {
         if(name !== currentUserCollab) {
             const opt = document.createElement('option');
@@ -264,7 +296,7 @@ btnSubmitReq.addEventListener('click', async () => {
         monthYear: `${selectedMonthObj.year}-${selectedMonthObj.month}`,
         type: selectedRequestType,
         createdAt: new Date().toISOString(),
-        status: 'pendente' // status inicial
+        status: 'pendente' 
     };
 
     if (selectedRequestType === 'troca_folga') {
@@ -301,7 +333,6 @@ const drawer = document.getElementById('notificationDrawer');
 const list = document.getElementById('notificationList');
 const badges = { admin: document.getElementById('adminBadge'), collab: document.getElementById('collabBadge') };
 
-// Botões para abrir drawer
 document.getElementById('btnAdminRequests')?.addEventListener('click', () => openDrawer());
 document.getElementById('btnCollabInbox')?.addEventListener('click', () => openDrawer());
 document.getElementById('btnCloseDrawer').addEventListener('click', () => drawer.classList.remove('translate-x-0'));
@@ -310,7 +341,6 @@ function openDrawer() {
     drawer.classList.add('translate-x-0');
 }
 
-// Listener de Solicitações
 function startRequestsListener() {
     const q = query(collection(db, "requests"), where("monthYear", "==", `${selectedMonthObj.year}-${selectedMonthObj.month}`));
     
@@ -327,21 +357,20 @@ function startRequestsListener() {
             let canAction = false;
             
             if (isAdmin) {
-                // Admin vê tudo que está 'pendente_lider'
+                // Admin vê solicitações pendentes de líder
                 if (req.status === 'pendente_lider') {
                     show = true;
                     canAction = true;
                     count++;
                 }
             } else if (currentUserCollab) {
-                // Colaborador vê:
-                // 1. Pedidos 'pendente_colega' onde ele é o target (Para aprovar)
+                // Colaborador vê solicitações de troca para ele
                 if (req.status === 'pendente_colega' && req.target === currentUserCollab) {
                     show = true;
                     canAction = true;
                     count++;
                 }
-                // 2. Seus próprios pedidos (Apenas visualizar status)
+                // Vê status dos próprios pedidos
                 if (req.requester === currentUserCollab) {
                     show = true;
                     canAction = false;
@@ -353,11 +382,10 @@ function startRequestsListener() {
             }
         });
 
-        // Atualiza Badges
         if(isAdmin) {
             badges.admin.textContent = count;
             badges.admin.classList.toggle('hidden', count === 0);
-        } else {
+        } else if (badges.collab) {
             badges.collab.textContent = count;
             badges.collab.classList.toggle('hidden', count === 0);
         }
@@ -407,32 +435,29 @@ function renderRequestItem(id, req, canAction) {
     list.appendChild(item);
 }
 
-// Ações Globais (window) para botões HTML
+// Ações Globais
 window.rejectRequest = async (id) => {
     if(!confirm("Rejeitar solicitação?")) return;
     await updateDoc(doc(db, "requests", id), { status: 'rejeitado' });
 }
 
 window.acceptRequest = async (id, currentStatus) => {
-    // 1. Se sou COLEGA aceitando -> status vira 'pendente_lider'
+    // COLEGA ACEITANDO
     if (currentStatus === 'pendente_colega') {
         await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
         alert("Você concordou! Agora a solicitação foi para o líder.");
     }
-    // 2. Se sou LÍDER aceitando -> Executa a troca real e marca 'aprovado'
+    // LÍDER APROVANDO
     else if (currentStatus === 'pendente_lider' && isAdmin) {
         if(!confirm("Aprovar e aplicar alterações na escala?")) return;
         
-        // Buscar request para pegar dados
         const reqSnap = await getDoc(doc(db, "requests", id));
         const req = reqSnap.data();
 
-        // EXECUTA A LÓGICA DE TROCA NA ESCALA
         applyScheduleChange(req);
 
-        // Atualiza request e salva escala
         await updateDoc(doc(db, "requests", id), { status: 'aprovado' });
-        await saveToCloud(); // Salva a escala modificada
+        await saveToCloud();
         alert("Alteração aplicada com sucesso!");
     }
 }
@@ -441,38 +466,26 @@ function applyScheduleChange(req) {
     const idx = req.dayIndex;
     
     if (req.type === 'troca_folga') {
-        // Troca simples de status entre Requester e Target naquele dia
+        // Troca simples de status
         const statusA = rawSchedule[req.requester].calculatedSchedule[idx];
         const statusB = rawSchedule[req.target].calculatedSchedule[idx];
         
-        // Inverte
         rawSchedule[req.requester].calculatedSchedule[idx] = statusB;
         rawSchedule[req.target].calculatedSchedule[idx] = statusA;
         
-        // Atualiza objeto de tela também
         scheduleData[req.requester].schedule[idx] = statusB;
         scheduleData[req.target].schedule[idx] = statusA;
 
     } else if (req.type === 'mudanca_turno') {
-        // Aqui poderíamos mudar o horário do dia específico, mas como a estrutura é simples:
-        // Vamos marcar o dia com uma nota especial ou apenas mudar status se aplicável.
-        // Como o prompt diz "Troca de turno Manhã para Noite", geralmente isso afeta o horário.
-        // Vou assumir que o Admin vai manualmente ajustar o horário se necessário, 
-        // mas para visualização, podemos assumir que a aprovação é apenas burocrática aqui.
-        // OU, mudamos o status para 'T' caso estivesse 'F'.
-        
-        // Vamos logar no console por enquanto pois a estrutura de dados (string única de horário) 
-        // não suporta horário por dia facilmente sem refatoração grande.
+        // Log para futura implementação complexa de horários por dia
         console.log(`Alterar turno de ${req.requester} no dia ${req.dayLabel} para ${req.newDetail}`);
     }
 }
 
 
 // ==========================================
-// 8. PROCESSAMENTO E UI (Mantido do original)
+// 8. PROCESSAMENTO E UI (Core Logic)
 // ==========================================
-// Funções auxiliares de processamento de dados (generate5x2, parseDayList, buildFinalSchedule)
-// ... (Mantidas identicas para poupar espaço, mas essenciais para funcionar)
 function generate5x2ScheduleDefaultForMonth(monthObj) {
     const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
     const arr = [];
@@ -555,12 +568,13 @@ function processScheduleData() {
     }
 }
 
-// Chart Logic (Simplificada para manter funcionamento)
+// Chart Logic
 function updateDailyView() {
-    // ... Lógica de renderização do gráfico e cards diários (mantida igual)
     const currentDateLabel = document.getElementById('currentDateLabel');
-    const dayOfWeekIndex = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
-    currentDateLabel.textContent = `${daysOfWeek[dayOfWeekIndex]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
+    if(currentDateLabel) {
+        const dayOfWeekIndex = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
+        currentDateLabel.textContent = `${daysOfWeek[dayOfWeekIndex]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
+    }
 
     let w=0, o=0, v=0, os=0;
     let wH='', oH='', vH='', osH='';
@@ -572,7 +586,6 @@ function updateDailyView() {
         let status = emp.schedule[currentDay-1] || 'F';
         let display = status;
         
-        // Simulação simples de horário
         if(status === 'T') w++; else if(status === 'FE') v++; else o++;
 
         const row = `
@@ -593,14 +606,12 @@ function updateDailyView() {
     document.getElementById('listOff').innerHTML = oH;
     document.getElementById('listVacation').innerHTML = vH;
     
-    // Atualiza gráfico se existir
     renderMonthlyTrendChart();
 }
 
 function renderMonthlyTrendChart() {
     const ctx = document.getElementById('dailyChart').getContext('2d');
     if(dailyChart) dailyChart.destroy();
-    // Re-create chart logic simplified
     dailyChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -618,7 +629,6 @@ function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
     
-    // Se for colaborador, só mostra ele mesmo
     if (currentUserCollab) {
         select.innerHTML = `<option value="${currentUserCollab}">${currentUserCollab}</option>`;
         select.disabled = true;
@@ -630,7 +640,6 @@ function initSelect() {
         select.disabled = false;
     }
     
-    // Recria listener
     const newSelect = select.cloneNode(true);
     select.parentNode.replaceChild(newSelect, select);
     newSelect.addEventListener('change', e => {
@@ -689,7 +698,6 @@ function updateCalendar(name, schedule) {
 }
 
 function handleAdminClick(name, dayIndex) {
-    // Admin muda status ciclicamente
     const emp = scheduleData[name];
     const sequence = ['T', 'F', 'FS', 'FD', 'FE'];
     let current = emp.schedule[dayIndex];
@@ -698,7 +706,6 @@ function handleAdminClick(name, dayIndex) {
     emp.schedule[dayIndex] = next;
     rawSchedule[name].calculatedSchedule = emp.schedule;
     
-    // Feedback visual de não salvo
     const statusEl = document.getElementById('saveStatus');
     const statusIcon = document.getElementById('saveStatusIcon');
     if(statusEl) {
@@ -717,6 +724,8 @@ function initGlobal() {
     initTabs();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
+    
+    // Baixa dados em memória (mas não mostra UI até logar)
     loadDataFromCloud();
 }
 
