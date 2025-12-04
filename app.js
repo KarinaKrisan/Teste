@@ -92,13 +92,15 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER ===
+// === AUTH LISTENER: ESTRATÉGIA DE BUSCA TOTAL ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
         console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
 
-        // 1. VERIFICAÇÃO DE ADMIN
+        // =====================================================
+        // ESTRATÉGIA 1: ADMINISTRADOR
+        // =====================================================
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -118,9 +120,12 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. VERIFICAÇÃO DE COLABORADOR
+        // =====================================================
+        // ESTRATÉGIA 2: COLABORADOR
+        // =====================================================
         let isDatabaseCollab = false;
         let dbName = null;
+        
         try {
             const collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
             const qCollabLower = query(collection(db, "colaboradores"), where("email", "==", userEmail));
@@ -153,7 +158,8 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        alert(`ERRO DE LOGIN: Usuário não encontrado no banco de dados.`);
+        console.warn(">> FALHA: Usuário não encontrado em NENHUMA tentativa.");
+        alert(`ERRO DE LOGIN:\n\nUsuario: ${userEmail}\nUID: ${user.uid}\n\nO sistema tentou buscar pelo ID e pelo E-mail, mas o Firebase não retornou o documento.`);
         signOut(auth);
         hideApp();
 
@@ -200,16 +206,16 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
-    // Força atualização imediata do Select e Renderização
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
+        // Limpa e trava o select para o colaborador
         empSelect.innerHTML = '';
         const opt = document.createElement('option');
         opt.value = name;
         opt.textContent = name;
         empSelect.appendChild(opt);
         empSelect.value = name;
-        empSelect.disabled = true; // Trava o select
+        empSelect.disabled = true; 
         
         if (scheduleData && scheduleData[name]) {
             renderPersonalCalendar(name);
@@ -284,9 +290,9 @@ async function loadDataFromCloud() {
             rawSchedule = docSnap.data();
             processScheduleData(); 
             updateDailyView();
-            initSelect(); // Atualiza a lista/restrição
+            initSelect(); 
             
-            // Se for colaborador, força a renderização da escala dele
+            // Força renderização do colaborador logado
             if (!isAdmin && currentUserCollab && scheduleData[currentUserCollab]) {
                 setupCollabMode(currentUserCollab);
             }
@@ -627,24 +633,20 @@ function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
 
-    // Limpa lista atual
     select.innerHTML = '';
 
-    // Se for COLABORADOR: trava e mostra só ele
     if (!isAdmin && currentUserCollab) {
         const opt = document.createElement('option');
         opt.value = currentUserCollab;
         opt.textContent = currentUserCollab;
         select.appendChild(opt);
         select.value = currentUserCollab;
-        select.disabled = true; // Impede clicar para mudar
+        select.disabled = true; 
         
-        // Auto-renderiza
-        if (scheduleData[currentUserCollab]) {
+        if (scheduleData && scheduleData[currentUserCollab]) {
             renderPersonalCalendar(currentUserCollab);
         }
     } 
-    // Se for ADMIN: mostra todos e destrava
     else {
         select.disabled = false;
         const defaultOpt = document.createElement('option');
@@ -660,12 +662,60 @@ function initSelect() {
         });
     }
 
-    // Listener de mudança (só útil para admin)
     select.addEventListener('change', (e) => {
         const name = e.target.value;
         if (name && scheduleData[name]) renderPersonalCalendar(name);
         else document.getElementById('calendarContainer')?.classList.add('hidden');
     });
+}
+
+// ==========================================
+// NOVA FUNÇÃO: RENDERIZA CARDS DE FIM DE SEMANA
+// ==========================================
+function renderWeekendModules(name) {
+    const container = document.getElementById('weekendPlantaoContainer');
+    if(!container) return;
+    container.innerHTML = '';
+
+    const schedule = scheduleData[name].schedule;
+    let hasWeekendWork = false;
+
+    schedule.forEach((status, index) => {
+        const day = index + 1;
+        const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
+        const dayOfWeek = date.getDay(); // 0 = Dom, 6 = Sáb
+
+        if ((dayOfWeek === 0 || dayOfWeek === 6) && status === 'T') {
+            hasWeekendWork = true;
+            
+            const dayName = dayOfWeek === 0 ? 'Domingo' : 'Sábado';
+            const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
+
+            const card = document.createElement('div');
+            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl flex items-center justify-between shadow-lg relative overflow-hidden group";
+            
+            card.innerHTML = `
+                <div class="absolute right-0 top-0 w-12 h-12 bg-orange-500/10 rounded-bl-full transition-all group-hover:bg-orange-500/20"></div>
+                <div>
+                    <p class="text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">${dayName}</p>
+                    <p class="text-white font-mono text-xl font-bold">${dateStr}</p>
+                </div>
+                <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2">
+                    <i class="fas fa-briefcase"></i> <span>Escalado</span>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+    });
+
+    if (!hasWeekendWork) {
+        container.innerHTML = `
+            <div class="col-span-full text-center py-8 text-gray-500 border border-dashed border-gray-700 rounded-xl">
+                <i class="fas fa-couch text-2xl mb-2 opacity-50"></i>
+                <p class="text-xs">Folga em todos os finais de semana.</p>
+            </div>
+        `;
+    }
 }
 
 // Renderiza Calendário Individual
@@ -707,6 +757,9 @@ function renderPersonalCalendar(name) {
 
         grid.appendChild(cell);
     }
+
+    // CHAMA A RENDERIZAÇÃO DOS FINS DE SEMANA
+    renderWeekendModules(name);
 }
 
 // Atualiza Gráfico Doughnut
