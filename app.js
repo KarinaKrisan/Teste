@@ -1,9 +1,9 @@
-// app.js - Cosmic Dark Edition (Rounded)
+// app.js - Cosmic Dark Edition (Requests Update)
 // ==========================================
 // 1. IMPORTAÇÕES FIREBASE (WEB SDK)
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, where, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 // ==========================================
@@ -26,12 +26,12 @@ const auth = getAuth(app);
 // 3. ESTADO
 // ==========================================
 let isAdmin = false;
-let hasUnsavedChanges = false;
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
 let isTrendMode = false;
 let currentDay = new Date().getDate();
+let currentUserSelection = ""; // Nome do colaborador selecionado no dropdown
 
 const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -59,6 +59,7 @@ function pad(n){ return n < 10 ? '0' + n : '' + n; }
 const adminToolbar = document.getElementById('adminToolbar');
 const btnOpenLogin = document.getElementById('btnOpenLogin');
 const btnLogout = document.getElementById('btnLogout');
+const adminRequestsTab = document.getElementById('btnAdminRequestsTab');
 
 if(btnLogout) btnLogout.addEventListener('click', () => {
     signOut(auth);
@@ -71,12 +72,16 @@ onAuthStateChanged(auth, (user) => {
         adminToolbar.classList.remove('hidden');
         if(btnOpenLogin) btnOpenLogin.classList.add('hidden');
         document.getElementById('adminEditHint').classList.remove('hidden');
+        if(adminRequestsTab) adminRequestsTab.classList.remove('hidden'); // Mostra aba de Admin
         document.body.style.paddingBottom = "100px"; 
+        
+        loadAdminRequests(); // Carrega solicitações para o líder
     } else {
         isAdmin = false;
         adminToolbar.classList.add('hidden');
         if(btnOpenLogin) btnOpenLogin.classList.remove('hidden');
         document.getElementById('adminEditHint').classList.add('hidden');
+        if(adminRequestsTab) adminRequestsTab.classList.add('hidden');
         document.body.style.paddingBottom = "0";
     }
     updateDailyView();
@@ -91,19 +96,25 @@ async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     try {
         const docRef = doc(db, "escalas", docId);
-        const docSnap = await getDoc(docRef);
+        
+        // Listener em Tempo Real para mudanças na escala
+        onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                rawSchedule = docSnap.data();
+                processScheduleData(); 
+                updateDailyView();
+                // Se já tiver carregado o select, mantém a seleção
+                const sel = document.getElementById('employeeSelect');
+                if(sel && sel.options.length <= 1) initSelect();
+                if(sel && sel.value) updatePersonalView(sel.value);
+            } else {
+                console.log("Nenhum documento encontrado.");
+                rawSchedule = {}; 
+                processScheduleData();
+                updateDailyView();
+            }
+        });
 
-        if (docSnap.exists()) {
-            rawSchedule = docSnap.data();
-            processScheduleData(); 
-            updateDailyView();
-            initSelect();
-        } else {
-            console.log("Nenhum documento encontrado.");
-            rawSchedule = {}; 
-            processScheduleData();
-            updateDailyView();
-        }
     } catch (e) {
         console.error("Erro ao baixar dados:", e);
     }
@@ -116,19 +127,17 @@ async function saveToCloud() {
     const statusIcon = document.getElementById('saveStatusIcon');
     
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> ...';
-    btn.classList.add('opacity-75', 'cursor-not-allowed');
     
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     
     try {
         await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
-        hasUnsavedChanges = false;
+        
         status.textContent = "Sincronizado";
         status.className = "text-xs text-gray-300 font-medium transition-colors";
         if(statusIcon) statusIcon.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]";
         setTimeout(() => {
-            btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar';
-            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
         }, 1000);
     } catch (e) {
         console.error("Erro ao salvar:", e);
@@ -140,103 +149,298 @@ async function saveToCloud() {
 document.getElementById('btnSaveCloud').addEventListener('click', saveToCloud);
 
 // ==========================================
-// 5.1 ADMIN PROFILE LOGIC (MEU PERFIL)
+// 6. REQUESTS SYSTEM (Solicitações)
 // ==========================================
-const profileModal = document.getElementById('profileModal');
-const btnOpenProfile = document.getElementById('btnOpenProfile');
-const btnCloseProfile = document.getElementById('btnCloseProfile');
-const btnCancelProfile = document.getElementById('btnCancelProfile');
-const btnSaveProfile = document.getElementById('btnSaveProfile');
 
-// Inputs do Modal
-const inpName = document.getElementById('profName');
-const inpEmail = document.getElementById('profEmail');
-const inpRole = document.getElementById('profRole');
-const inpUnit = document.getElementById('profUnit');
-const inpPhone = document.getElementById('profPhone');
+// --- UI Actions ---
+const btnNewReqShift = document.getElementById('btnNewReqShift');
+const btnNewReqSwap = document.getElementById('btnNewReqSwap');
+const modalReqShift = document.getElementById('modalReqShift');
+const modalReqSwap = document.getElementById('modalReqSwap');
 
-function toggleProfileModal(show) {
-    if(show) {
-        profileModal.classList.remove('hidden');
-        loadAdminProfile();
-    } else {
-        profileModal.classList.add('hidden');
-    }
+function toggleModal(modal, show) {
+    if(show) modal.classList.remove('hidden');
+    else modal.classList.add('hidden');
 }
 
-if(btnOpenProfile) btnOpenProfile.addEventListener('click', () => toggleProfileModal(true));
-if(btnCloseProfile) btnCloseProfile.addEventListener('click', () => toggleProfileModal(false));
-if(btnCancelProfile) btnCancelProfile.addEventListener('click', () => toggleProfileModal(false));
-if(profileModal) profileModal.addEventListener('click', (e) => {
-    if(e.target === profileModal) toggleProfileModal(false);
+// Abrir Modais
+btnNewReqShift.addEventListener('click', () => {
+    document.getElementById('reqShiftName').value = currentUserSelection; // Auto-preenche
+    toggleModal(modalReqShift, true);
 });
-
-async function loadAdminProfile() {
-    const user = auth.currentUser;
-    if(!user) return;
-
-    inpEmail.value = user.email; // Preenche email do Auth automaticamente
-    
-    btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Carregando...';
-    btnSaveProfile.disabled = true;
-
-    try {
-        const docRef = doc(db, "admins", user.uid);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            inpName.value = data.name || '';
-            inpRole.value = data.role || '';
-            inpUnit.value = data.unit || '';
-            inpPhone.value = data.phone || '';
-        } else {
-            // Se não existe perfil ainda, limpa os campos
-            inpName.value = '';
-            inpRole.value = '';
-            inpUnit.value = '';
-            inpPhone.value = '';
+btnNewReqSwap.addEventListener('click', () => {
+    document.getElementById('reqSwapRequester').value = currentUserSelection;
+    // Popula parceiros
+    const selPartner = document.getElementById('reqSwapTarget');
+    selPartner.innerHTML = '<option value="">Selecione...</option>';
+    Object.keys(scheduleData).sort().forEach(n => {
+        if(n !== currentUserSelection) {
+            const opt = document.createElement('option');
+            opt.value = n; opt.textContent = n;
+            selPartner.appendChild(opt);
         }
-    } catch (e) {
-        console.error("Erro ao carregar perfil:", e);
-    } finally {
-        btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
-        btnSaveProfile.disabled = false;
-    }
-}
+    });
+    toggleModal(modalReqSwap, true);
+});
 
-if(btnSaveProfile) btnSaveProfile.addEventListener('click', async () => {
-    const user = auth.currentUser;
-    if(!user) return;
+// Fechar Modais (Botões Cancelar e Fundo)
+document.querySelectorAll('.btn-close-modal').forEach(b => {
+    b.addEventListener('click', (e) => toggleModal(e.target.closest('.fixed'), false));
+});
 
-    const profileData = {
-        name: inpName.value,
-        email: user.email,
-        role: inpRole.value,
-        unit: inpUnit.value,
-        phone: inpPhone.value,
-        updatedAt: new Date().toISOString()
-    };
-
-    btnSaveProfile.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
-    btnSaveProfile.disabled = true;
-
+// --- Envio de Solicitação: Alteração Simples / Troca de Turno ---
+document.getElementById('formReqShift').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const requester = document.getElementById('reqShiftName').value;
+    const date = document.getElementById('reqShiftDate').value;
+    const type = document.getElementById('reqShiftType').value;
+    const obs = document.getElementById('reqShiftObs').value;
+    
+    // Converter data input para dia do mês
+    const dObj = new Date(date);
+    const day = dObj.getDate() + 1; // Ajuste de fuso simples ou usar UTC
+    
+    // Salvar no Firestore
     try {
-        await setDoc(doc(db, "admins", user.uid), profileData, { merge: true });
-        toggleProfileModal(false);
-        // Opcional: Mostrar toast de sucesso
-    } catch (e) {
-        console.error("Erro ao salvar perfil:", e);
-        alert("Erro ao salvar perfil.");
-    } finally {
-        btnSaveProfile.innerHTML = '<i class="fas fa-save mr-2"></i> Salvar Alterações';
-        btnSaveProfile.disabled = false;
+        await addDoc(collection(db, "requests"), {
+            type: "shift_change",
+            requester: requester,
+            targetDate: date,
+            day: day, // Dia numérico para referência
+            month: selectedMonthObj.month,
+            year: selectedMonthObj.year,
+            shiftType: type, // "folga" ou "troca_turno"
+            obs: obs,
+            status: "pending_leader", // Vai direto para o líder
+            createdAt: new Date().toISOString()
+        });
+        alert("Solicitação enviada para aprovação do líder!");
+        toggleModal(modalReqShift, false);
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao enviar solicitação.");
     }
 });
 
+// --- Envio de Solicitação: Troca com Parceiro ---
+document.getElementById('formReqSwap').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const requester = document.getElementById('reqSwapRequester').value;
+    const targetUser = document.getElementById('reqSwapTarget').value;
+    const date = document.getElementById('reqSwapDate').value;
+    const obs = document.getElementById('reqSwapObs').value;
+
+    try {
+        await addDoc(collection(db, "requests"), {
+            type: "partner_swap",
+            requester: requester,
+            targetUser: targetUser,
+            targetDate: date,
+            month: selectedMonthObj.month,
+            year: selectedMonthObj.year,
+            obs: obs,
+            status: "pending_partner", // Primeiro para o parceiro (Gabriel)
+            createdAt: new Date().toISOString()
+        });
+        alert(`Solicitação enviada para ${targetUser}. Assim que ele aceitar, irá para o líder.`);
+        toggleModal(modalReqSwap, false);
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao enviar solicitação.");
+    }
+});
+
+// --- Carregar Solicitações do Colaborador (Painel Pessoal) ---
+function loadCollaboratorRequests(name) {
+    const listMyReq = document.getElementById('listMyRequests');
+    const listPending = document.getElementById('listPendingApprovals');
+    
+    if(!name) return;
+
+    // 1. Minhas Solicitações (Eu pedi)
+    const q1 = query(collection(db, "requests"), where("requester", "==", name), orderBy("createdAt", "desc"));
+    onSnapshot(q1, (snap) => {
+        listMyReq.innerHTML = '';
+        if(snap.empty) { listMyReq.innerHTML = '<p class="text-gray-500 text-xs italic">Nenhuma solicitação recente.</p>'; return; }
+        
+        snap.forEach(d => {
+            const data = d.data();
+            const dateFmt = data.targetDate ? data.targetDate.split('-').reverse().join('/') : 'N/A';
+            let statusText = '';
+            let statusClass = '';
+
+            if(data.status === 'pending_partner') { statusText = 'Aguardando Parceiro'; statusClass = 'req-pending_partner'; }
+            else if(data.status === 'pending_leader') { statusText = 'Aguardando Líder'; statusClass = 'req-pending_leader'; }
+            else if(data.status === 'approved') { statusText = 'Aprovado'; statusClass = 'req-approved'; }
+            else { statusText = 'Recusado'; statusClass = 'req-rejected'; }
+
+            const desc = data.type === 'partner_swap' ? `Troca com ${data.targetUser}` : `Alteração (${data.shiftType})`;
+
+            listMyReq.innerHTML += `
+                <div class="bg-[#0F1020] p-3 rounded border border-[#2E3250] mb-2">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-gray-300 font-bold text-xs">${desc}</p>
+                            <p class="text-gray-500 text-[10px]">${dateFmt}</p>
+                        </div>
+                        <span class="req-status ${statusClass}">${statusText}</span>
+                    </div>
+                </div>
+            `;
+        });
+    });
+
+    // 2. Aprovações Pendentes (Alguém pediu para trocar comigo - Ex: Gabriel vendo pedido da Karina)
+    const q2 = query(collection(db, "requests"), where("targetUser", "==", name), where("status", "==", "pending_partner"));
+    onSnapshot(q2, (snap) => {
+        listPending.innerHTML = '';
+        const badge = document.getElementById('pendingCountBadge');
+        if(badge) badge.classList.add('hidden');
+
+        if(snap.empty) { listPending.innerHTML = '<p class="text-gray-500 text-xs italic">Nenhuma aprovação pendente.</p>'; return; }
+        
+        if(badge) {
+            badge.textContent = snap.size;
+            badge.classList.remove('hidden');
+        }
+
+        snap.forEach(d => {
+            const data = d.data();
+            const id = d.id;
+            const dateFmt = data.targetDate.split('-').reverse().join('/');
+            
+            listPending.innerHTML += `
+                <div class="bg-[#1A1C2E] p-3 rounded border border-yellow-500/30 mb-2 relative overflow-hidden">
+                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500"></div>
+                    <p class="text-gray-200 text-sm font-bold mb-1">${data.requester} quer trocar com você.</p>
+                    <p class="text-gray-400 text-xs mb-2">Dia: <span class="text-white">${dateFmt}</span>. Motivo: ${data.obs || 'N/A'}</p>
+                    <div class="flex gap-2">
+                        <button onclick="approveRequestPartner('${id}')" class="flex-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/50 rounded py-1 text-xs font-bold transition-colors">Aceitar</button>
+                        <button onclick="rejectRequest('${id}')" class="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/50 rounded py-1 text-xs font-bold transition-colors">Recusar</button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+// --- Funções Globais de Ação (Partner) ---
+window.approveRequestPartner = async (id) => {
+    if(!confirm("Aceitar a troca? Isso enviará o pedido para aprovação final do líder.")) return;
+    await updateDoc(doc(db, "requests", id), { status: "pending_leader" });
+};
+
+window.rejectRequest = async (id) => {
+    if(!confirm("Recusar solicitação?")) return;
+    await updateDoc(doc(db, "requests", id), { status: "rejected" });
+};
+
+// --- Área do Admin (Líder) ---
+function loadAdminRequests() {
+    const container = document.getElementById('adminRequestsList');
+    if(!container) return;
+
+    const q = query(collection(db, "requests"), where("status", "==", "pending_leader"), orderBy("createdAt", "asc"));
+    
+    onSnapshot(q, (snap) => {
+        container.innerHTML = '';
+        if(snap.empty) { container.innerHTML = '<div class="text-center text-gray-500 py-10">Tudo limpo! Nenhuma solicitação pendente.</div>'; return; }
+
+        snap.forEach(d => {
+            const data = d.data();
+            const id = d.id;
+            const dateFmt = data.targetDate ? data.targetDate.split('-').reverse().join('/') : 'N/A';
+            
+            let title = "";
+            let details = "";
+            
+            if(data.type === 'partner_swap') {
+                title = `Troca: ${data.requester} ⇄ ${data.targetUser}`;
+                details = `<span class="text-green-400 font-bold">Aceito por ${data.targetUser}</span>. Aguardando Líder.`;
+            } else {
+                title = `Alteração: ${data.requester}`;
+                details = `Tipo: <span class="text-white capitalize">${data.shiftType}</span>.`;
+            }
+
+            container.innerHTML += `
+                <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-xl p-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-lg">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="bg-blue-500/20 text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-500/30">PENDENTE LÍDER</span>
+                            <span class="text-gray-500 text-xs">${dateFmt}</span>
+                        </div>
+                        <h4 class="text-white font-bold text-lg">${title}</h4>
+                        <p class="text-gray-400 text-sm mt-1">${details}</p>
+                        <p class="text-gray-500 text-xs italic mt-1">Obs: ${data.obs || '--'}</p>
+                    </div>
+                    <div class="flex gap-3 w-full md:w-auto">
+                        <button onclick="approveRequestLeader('${id}')" class="flex-1 md:flex-none px-6 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-lg shadow-lg transition-all transform hover:scale-105">
+                            <i class="fas fa-check mr-1"></i> Aprovar
+                        </button>
+                        <button onclick="rejectRequest('${id}')" class="flex-1 md:flex-none px-6 py-2 bg-[#0F1020] border border-red-900/50 text-red-400 hover:bg-red-900/20 font-bold rounded-lg transition-colors">
+                            Recusar
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    });
+}
+
+window.approveRequestLeader = async (id) => {
+    // 1. Pegar dados do request
+    const reqSnap = await getDoc(doc(db, "requests", id));
+    if(!reqSnap.exists()) return;
+    const data = reqSnap.data();
+
+    // 2. Atualizar a Escala Real (rawSchedule)
+    // Precisamos saber o dia indexado (0-30). 
+    // Data input é YYYY-MM-DD.
+    const dayIndex = parseInt(data.targetDate.split('-')[2]) - 1; // 0-based
+    
+    // Validar se estamos no mês certo
+    if(data.month !== selectedMonthObj.month || data.year !== selectedMonthObj.year) {
+        alert("Atenção: Esta solicitação é de um mês diferente do visualizado. Mude o mês para aplicar.");
+        return;
+    }
+
+    // Lógica de Atualização da Grade
+    if(data.type === 'shift_change') {
+        // Ex: Solicitou Folga
+        const targetStatus = data.shiftType === 'folga' ? 'F' : 'T'; // Simplificação
+        if(rawSchedule[data.requester]) {
+            rawSchedule[data.requester].calculatedSchedule[dayIndex] = targetStatus;
+            // Opcional: Salvar Obs
+        }
+    } else if (data.type === 'partner_swap') {
+        // Troca Simples: Inverte os status dos dois no dia
+        const p1 = data.requester;
+        const p2 = data.targetUser;
+        if(rawSchedule[p1] && rawSchedule[p2]) {
+            const s1 = rawSchedule[p1].calculatedSchedule[dayIndex];
+            const s2 = rawSchedule[p2].calculatedSchedule[dayIndex];
+            
+            rawSchedule[p1].calculatedSchedule[dayIndex] = s2;
+            rawSchedule[p2].calculatedSchedule[dayIndex] = s1;
+        }
+    }
+
+    // 3. Salvar no Firestore (Escala) e Atualizar Request
+    try {
+        const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
+        await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
+        
+        // Atualiza status do pedido
+        await updateDoc(doc(db, "requests", id), { status: "approved" });
+        alert("Aprovado e escala atualizada!");
+    } catch(e) {
+        console.error(e);
+        alert("Erro ao efetivar a troca.");
+    }
+};
 
 // ==========================================
-// 6. DATA PROCESSING
+// 7. DATA PROCESSING & CHART (Existente)
 // ==========================================
 function generate5x2ScheduleDefaultForMonth(monthObj) {
     const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
@@ -321,7 +525,7 @@ function processScheduleData() {
 }
 
 // ==========================================
-// 7. CHART & UI
+// 8. CHART & UI (Mantido com melhorias)
 // ==========================================
 function parseSingleTimeRange(rangeStr) {
     if (!rangeStr || typeof rangeStr !== 'string') return null;
@@ -519,7 +723,6 @@ function updateDailyView() {
         else if (status === 'T') w++;
         else o++; 
 
-        // CRIAÇÃO DO ITEM DA LISTA COM BORDAS ARREDONDADAS (rounded-xl)
         const row = `
             <li class="flex justify-between items-center text-sm p-4 rounded-xl mb-2 bg-[#1A1C2E] hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500 transition-all cursor-default shadow-sm group">
                 <div class="flex flex-col">
@@ -549,7 +752,7 @@ function updateDailyView() {
 }
 
 // ==========================================
-// 8. PERSONAL & ADMIN
+// 9. PERSONAL & ADMIN
 // ==========================================
 function initSelect() {
     const select = document.getElementById('employeeSelect');
@@ -565,9 +768,12 @@ function initSelect() {
     newSelect.addEventListener('change', e => {
         const name = e.target.value;
         if(name) {
+            currentUserSelection = name;
             updatePersonalView(name);
         } else {
+            currentUserSelection = "";
             document.getElementById('personalInfoCard').classList.add('hidden');
+            document.getElementById('collaboratorActionsPanel').classList.add('hidden');
             document.getElementById('calendarContainer').classList.add('hidden');
         }
     });
@@ -577,6 +783,7 @@ function updatePersonalView(name) {
     const emp = scheduleData[name];
     if (!emp) return;
     const card = document.getElementById('personalInfoCard');
+    const actionsPanel = document.getElementById('collaboratorActionsPanel');
     
     const cargo = emp.info.Cargo || emp.info.Grupo || 'Colaborador';
     const horario = emp.info.Horário || '--:--';
@@ -625,6 +832,10 @@ function updatePersonalView(name) {
         </div>
     `;
 
+    // Show Collaborator Actions
+    actionsPanel.classList.remove('hidden');
+    loadCollaboratorRequests(name);
+
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, emp.schedule);
 }
@@ -643,7 +854,7 @@ async function handleCellClick(name, dayIndex) {
     emp.schedule[dayIndex] = newStatus;
     rawSchedule[name].calculatedSchedule = emp.schedule;
     
-    hasUnsavedChanges = true;
+    // hasUnsavedChanges removido em favor do salvamento manual via botão que já atualiza o estado
     const statusEl = document.getElementById('saveStatus');
     const statusIcon = document.getElementById('saveStatusIcon');
     if(statusEl) {
@@ -709,7 +920,7 @@ function updateCalendar(name, schedule) {
 }
 
 // ==========================================
-// 9. INIT
+// 10. INIT
 // ==========================================
 function initGlobal() {
     initTabs();
@@ -797,9 +1008,7 @@ function updateWeekendTable(specificName) {
                             <h4 class="text-sky-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSat}</h4>
                             <div class="flex flex-wrap">${satTags}</div>
                         </div>
-                        ${sunDate ? `<div class="pt-3 border-t border-[#2E3250]">
-                            <h4 class="text-indigo-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSun}</h4>
-                            <div class="flex flex-wrap">${sunTags}</div></div>` : ''}
+                        ${sunDate ? `<div class="pt-3 border-t border-[#2E3250]\">\n                            <h4 class="text-indigo-500 font-bold text-xs uppercase mb-2 flex items-center gap-2"><i class="fas fa-calendar-day"></i> ${labelSun}</h4>\n                            <div class="flex flex-wrap">${sunTags}</div></div>` : ''}
                     </div>
                 </div>`;
                 container.insertAdjacentHTML('beforeend', cardHTML);
