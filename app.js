@@ -57,6 +57,14 @@ function normalizeString(str) {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+// Gera iniciais para o Avatar (ex: Karina Krisan -> KK)
+function getInitials(name) {
+    if (!name) return "CR";
+    const parts = name.split(' ');
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     const prefix = email.split('@')[0];
@@ -233,7 +241,6 @@ const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
 
-// Inputs de Login
 const emailInput = document.getElementById('collabEmailInput');
 const passInput = document.getElementById('collabPassInput');
 
@@ -242,14 +249,12 @@ if(btnLandingCollab) {
         if(emailInput) emailInput.value = '';
         if(passInput) passInput.value = '';
         collabModal.classList.remove('hidden');
-        // Foca no email ao abrir
         setTimeout(() => { if(emailInput) emailInput.focus(); }, 100);
     });
 }
 
 if(btnCancelCollab) btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
-// --- LÓGICA DO LOGIN (BOTÃO) ---
 const performLogin = async () => {
     const email = emailInput.value.trim();
     const pass = passInput.value;
@@ -271,16 +276,13 @@ const performLogin = async () => {
     }
 };
 
-if(btnConfirmCollab) {
-    btnConfirmCollab.addEventListener('click', performLogin);
-}
+if(btnConfirmCollab) btnConfirmCollab.addEventListener('click', performLogin);
 
-// --- LÓGICA DA TECLA ENTER ---
 if(emailInput) {
     emailInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            passInput.focus(); // Enter no email vai pra senha
+            passInput.focus(); 
         }
     });
 }
@@ -289,7 +291,7 @@ if(passInput) {
     passInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            performLogin(); // Enter na senha faz o login
+            performLogin(); 
         }
     });
 }
@@ -797,7 +799,7 @@ function renderWeekendModules(name) {
 }
 
 // -----------------------------------------------------
-// ATUALIZAÇÃO: HEADER COM INFOS COMPLETAS
+// ATUALIZAÇÃO: HEADER COM INFOS COMPLETAS & DESIGN MELHORADO
 // -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
@@ -811,46 +813,55 @@ function renderPersonalCalendar(name) {
     
     if(!scheduleData[name]) return;
     const schedule = scheduleData[name].schedule;
-    const info = scheduleData[name].info || {}; // Garante que info exista
+    const info = scheduleData[name].info || {}; 
 
-    // Pega dados do objeto 'info' ou usa placeholder
+    // --- Dados da Base de Dados ---
     const cargo = info.cargo || "Não informado";
     const celula = info.celula || "Geral";
     const turno = info.turno || "--";
     const horario = info.horario || "--:--";
+    const initials = getInitials(name);
 
     if(infoCard) {
         infoCard.classList.remove('hidden');
-        // Novo Layout Grid para as informações
+        // NOVO DESIGN: Estilo "Crachá" com Avatar e Dados em Grade
         infoCard.innerHTML = `
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-[#2E3250] pb-6 mb-6">
-                <div>
-                    <h3 class="text-3xl font-bold text-white mb-1">${name}</h3>
-                    <p class="text-sm text-purple-400 font-bold uppercase tracking-widest">${cargo}</p>
+            <div class="bg-[#161828] border border-[#2E3250] rounded-xl p-5 mb-6 flex flex-col md:flex-row items-center md:items-start gap-5 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+
+                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-lg text-white font-bold text-xl relative z-10 border-2 border-[#1A1C2E]">
+                    ${initials}
                 </div>
-                <div class="flex gap-4">
-                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold">Célula</p>
-                        <p class="text-sm text-white font-bold">${celula}</p>
-                    </div>
-                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold">Turno</p>
-                        <p class="text-sm text-white font-bold">${turno}</p>
-                    </div>
-                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
-                        <p class="text-[10px] text-gray-500 uppercase font-bold">Horário</p>
-                        <p class="text-sm text-white font-bold">${horario}</p>
+
+                <div class="flex-1 w-full text-center md:text-left relative z-10">
+                    <h3 class="text-xl font-bold text-white mb-1">${name}</h3>
+                    <p class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4">${cargo}</p>
+
+                    <div class="grid grid-cols-3 gap-2 border-t border-[#2E3250] pt-3">
+                        <div>
+                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Célula</p>
+                            <p class="text-sm text-gray-300 font-medium">${celula}</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Turno</p>
+                            <p class="text-sm text-gray-300 font-medium">${turno}</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Horário</p>
+                            <span class="text-sm text-white font-bold bg-white/5 rounded px-2 py-0.5 inline-block border border-white/10">${horario}</span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="flex items-center gap-2 mb-4">
+            
+            <div class="flex items-center gap-2 mb-3 px-1">
                 <i class="fas fa-calendar-alt text-gray-500"></i>
                 <span class="text-sm text-gray-400 font-medium">${selectedMonthObj.label}</span>
             </div>
         `;
     }
     
-    // --- LÓGICA DE ALINHAMENTO ---
+    // --- LÓGICA DE ALINHAMENTO DO GRID ---
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
 
     for (let i = 0; i < firstDayOfWeek; i++) {
