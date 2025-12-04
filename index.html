@@ -45,7 +45,8 @@
     <!-- ========================================== -->
     <!-- TELA DE ENTRADA (LANDING PAGE) -->
     <!-- ========================================== -->
-    <div id="landingPage" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0F1020] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]">
+    <!-- MUDANÇA DE COR DO FUNDO AQUI -->
+    <div id="landingPage" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-[#050505] via-[#0F1020] to-[#1A1C2E]">
         
         <!-- Efeitos de Fundo -->
         <div class="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[100px] pointer-events-none"></div>
@@ -61,13 +62,14 @@
             <h1 class="text-5xl md:text-7xl font-extrabold mb-2 tracking-tight text-white drop-shadow-lg">
                 CRONOS
             </h1>
+            <!-- MUDANÇA DE TEXTO AQUI -->
             <p class="text-lg text-gray-400 font-medium mb-10 tracking-wide">
-                Workforce Management System
+                Gestão de Escala Inteligente
             </p>
 
             <div class="space-y-4">
                 <!-- Botão Colaborador -->
-                <button id="btnLandingCollab" class="w-full bg-[#1A1C2E] hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-purple-900/20 hover:-translate-y-1">
+                <button id="btnLandingCollab" class="w-full bg-[#1A1C2E]/80 backdrop-blur-sm hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-purple-900/20 hover:-translate-y-1">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-colors">
                             <i class="fas fa-user-astronaut text-xl"></i>
@@ -81,7 +83,7 @@
                 </button>
 
                 <!-- Botão Admin -->
-                <a href="login.html" class="w-full bg-[#1A1C2E] hover:bg-[#2E3250] border border-[#2E3250] hover:border-orange-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-orange-900/20 hover:-translate-y-1">
+                <a href="login.html" class="w-full bg-[#1A1C2E]/80 backdrop-blur-sm hover:bg-[#2E3250] border border-[#2E3250] hover:border-orange-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-orange-900/20 hover:-translate-y-1">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
                             <i class="fas fa-shield-alt text-xl"></i>
