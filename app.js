@@ -76,6 +76,7 @@ function resolveCollaboratorName(email) {
         });
         if (matchKey) return matchKey;
     }
+    
     return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -416,17 +417,20 @@ window.openRequestModal = function(dayIndex) {
     requestModal.classList.remove('hidden');
 }
 
+// Botões de Tipo de Solicitação
 document.querySelectorAll('.req-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+        // Reset visual
         document.querySelectorAll('.req-type-btn').forEach(b => b.classList.remove('active', 'bg-purple-500/20', 'border-purple-500', 'text-white'));
         document.querySelectorAll('.req-type-btn').forEach(b => b.classList.add('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]'));
         
+        // Ativa o clicado
         btn.classList.remove('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]');
         btn.classList.add('active', 'bg-purple-500/20', 'border-purple-500', 'text-white');
         
         selectedRequestType = btn.dataset.type;
         
-        if(selectedRequestType === 'troca_folga') {
+        if(selectedRequestType === 'troca_folga' || selectedRequestType === 'troca_dia') {
             document.getElementById('swapFields').classList.remove('hidden');
             document.getElementById('shiftFields').classList.add('hidden');
         } else {
@@ -458,7 +462,15 @@ if(btnSubmitReq) {
             reqData.target = target;
             reqData.status = 'pendente_colega'; 
             reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
-        } else {
+        } 
+        else if (selectedRequestType === 'troca_dia') {
+            const target = targetPeerSelect.value;
+            if(!target) return alert("Selecione um colega.");
+            reqData.target = target;
+            reqData.status = 'pendente_colega'; 
+            reqData.description = `quer trocar o dia trabalhado com você em ${reqData.dayLabel}`;
+        }
+        else {
             const newShift = document.getElementById('newShiftInput').value;
             if(!newShift) return alert("Digite o turno desejado.");
             reqData.newDetail = newShift;
@@ -591,19 +603,18 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
         
         if (type === 'mudanca_turno') {
             try {
-                // Tenta achar com Nome maiúsculo
                 const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
                 const snap = await getDocs(q);
                 if (!snap.empty) {
                     await updateDoc(snap.docs[0].ref, { Turno: newDetail });
                 } else {
-                    // Tenta achar com nome minúsculo
                     const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
                     const snap2 = await getDocs(q2);
                     if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
                 }
             } catch(e) { console.error(e); }
         } else {
+            // Troca de Folga OU Troca de Dia (ambos mexem na escala)
             const reqSnap = await getDoc(doc(db, "requests", id));
             applyScheduleChange(reqSnap.data());
             await saveToCloud();
@@ -616,7 +627,7 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
 
 function applyScheduleChange(req) {
     const idx = req.dayIndex;
-    if (req.type === 'troca_folga') {
+    if (req.type === 'troca_folga' || req.type === 'troca_dia') {
         const statusA = rawSchedule[req.requester].calculatedSchedule[idx];
         const statusB = rawSchedule[req.target].calculatedSchedule[idx];
         
