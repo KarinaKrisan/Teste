@@ -2,8 +2,9 @@
 // ==========================================
 // 1. IMPORTAÇÕES FIREBASE
 // ==========================================
+// Adicionado 'getDocs' para permitir a busca por campo
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 // ==========================================
@@ -26,7 +27,7 @@ const auth = getAuth(app);
 // 3. ESTADO GLOBAL
 // ==========================================
 let isAdmin = false;
-let currentUserCollab = null; // Nome do colaborador logado
+let currentUserCollab = null; 
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
@@ -73,33 +74,45 @@ function hideApp() {
 // === AUTH LISTENER PRINCIPAL ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // --- LÓGICA DE VERIFICAÇÃO DE ADMIN (DATABASE + HARDCODED) ---
+        console.log("Usuário detectado:", user.email);
+        
+        // --- LÓGICA DE VERIFICAÇÃO DE ADMIN (ROBUSTA) ---
         let isDatabaseAdmin = false;
         
         try {
-            // Verifica se existe um documento com o ID igual ao email na coleção 'administradores'
+            // 1. Tenta buscar pelo ID do documento (ex: administradores/email@teste.com)
             const adminDocRef = doc(db, "administradores", user.email);
             const adminDocSnap = await getDoc(adminDocRef);
             
             if (adminDocSnap.exists()) {
+                console.log("Admin encontrado por ID");
                 isDatabaseAdmin = true;
+            } else {
+                // 2. FALLBACK: Tenta buscar se existe um campo 'email' igual ao do usuário
+                // Isso cobre casos onde o ID é aleatório
+                const q = query(collection(db, "administradores"), where("email", "==", user.email));
+                const querySnapshot = await getDocs(q);
+                
+                if (!querySnapshot.empty) {
+                    console.log("Admin encontrado por Query de campo");
+                    isDatabaseAdmin = true;
+                }
             }
         } catch (error) {
-            console.error("Erro ao verificar permissões de admin:", error);
+            console.error("Erro ao verificar permissões de admin no Firestore:", error);
         }
 
-        // Mantemos os admins estáticos como fallback/supremos
+        // Mantemos os admins estáticos como segurança extra
         const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
 
         if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
-            // É ADMIN (Base de dados ou Lista Estática)
+            console.log("Acesso concedido: ADMIN");
             setAdminMode(true);
             revealApp();
         } else {
-            // NÃO É ADMIN -> Tenta carregar como COLABORADOR
-            // Tenta resolver o nome baseado no e-mail (ex: karina.krisan -> Karina Krisan)
+            console.log("Acesso concedido: COLABORADOR");
+            // Tenta resolver o nome baseado no e-mail
             const resolvedName = resolveCollaboratorName(user.email);
-            
             currentUserCollab = resolvedName;
             setupCollabMode(currentUserCollab);
             revealApp();
@@ -113,11 +126,9 @@ onAuthStateChanged(auth, async (user) => {
 // Função auxiliar para achar o nome na lista baseado no email
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
-    
-    // Remove o dominio e substitui pontos por espaços
     const rawName = email.split('@')[0].replace(/\./g, ' ');
     
-    // Tenta achar match exato ou parcial nas chaves do scheduleData (dados do firebase)
+    // Busca na escala carregada
     if (Object.keys(scheduleData).length > 0) {
         const match = Object.keys(scheduleData).find(dbName => 
             dbName.toLowerCase().includes(rawName.toLowerCase()) || 
@@ -125,11 +136,8 @@ function resolveCollaboratorName(email) {
         );
         if (match) return match;
     }
-
-    // Fallback: Formata bonito
-    return rawName.split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
+    // Formata bonito
+    return rawName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 function setAdminMode(active) {
@@ -145,6 +153,7 @@ function setAdminMode(active) {
         document.getElementById('collabEditHint').classList.add('hidden');
         document.body.style.paddingBottom = "100px";
         
+        // Admin VÊ a visão diária
         if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
         
         startRequestsListener();
@@ -174,10 +183,8 @@ function setupCollabMode(name) {
     // Auto-select na view pessoal
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
-        // Tenta setar o valor
         empSelect.value = name;
-        
-        // Se não pegou (valor não existe exato nas options), tenta busca fuzzy nas options
+        // Busca fuzzy no select
         if(empSelect.selectedIndex === -1 && name) {
              for (let i = 0; i < empSelect.options.length; i++) {
                 if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
@@ -190,14 +197,13 @@ function setupCollabMode(name) {
         empSelect.dispatchEvent(new Event('change'));
     }
 
-    // Força ir para a tab pessoal automaticamente
+    // Força ir para a tab pessoal
     const personalTab = document.querySelector('[data-tab="personal"]');
     if(personalTab) personalTab.click();
     
     startRequestsListener();
 }
 
-// Logout Global
 const btnLogout = document.getElementById('btnLogout');
 if(btnLogout) btnLogout.addEventListener('click', () => signOut(auth));
 
@@ -210,7 +216,6 @@ const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
 
-// Abrir modal na landing page
 if(btnLandingCollab) {
     btnLandingCollab.addEventListener('click', () => {
         document.getElementById('collabEmailInput').value = '';
@@ -221,7 +226,6 @@ if(btnLandingCollab) {
 
 btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
-// Ação de Login do Colaborador (COM VALIDAÇÃO DE DOMÍNIO)
 btnConfirmCollab.addEventListener('click', async () => {
     const email = document.getElementById('collabEmailInput').value.trim();
     const pass = document.getElementById('collabPassInput').value;
@@ -229,7 +233,7 @@ btnConfirmCollab.addEventListener('click', async () => {
 
     if(!email || !pass) return alert("Preencha todos os campos.");
 
-    // --- REGRA DE NEGÓCIO: Apenas @sitelbra.com.br ---
+    // Trava de Domínio
     if (!email.toLowerCase().endsWith('@sitelbra.com.br')) {
         alert("Acesso restrito: Utilize seu e-mail corporativo (@sitelbra.com.br).");
         return;
@@ -238,7 +242,6 @@ btnConfirmCollab.addEventListener('click', async () => {
     try {
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         await signInWithEmailAndPassword(auth, email, pass);
-        // O onAuthStateChanged vai lidar com o resto
         collabModal.classList.add('hidden');
     } catch (e) {
         console.error(e);
@@ -250,7 +253,6 @@ btnConfirmCollab.addEventListener('click', async () => {
     }
 });
 
-// Logout Colaborador
 document.getElementById('btnCollabLogout').addEventListener('click', () => {
     signOut(auth);
 });
@@ -271,18 +273,15 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect();
             
-            // RE-RESOLUÇÃO DE NOME:
-            // Se o usuário já estiver logado quando os dados chegarem,
-            // tentamos melhorar o match do nome agora que temos a lista real do banco.
+            // Revalida nome se user já estiver logado
             const user = auth.currentUser;
             if (user && !isAdmin && user.email) {
                 const betterName = resolveCollaboratorName(user.email);
                 if (betterName !== currentUserCollab) {
                     currentUserCollab = betterName;
-                    setupCollabMode(currentUserCollab); // Atualiza a UI com o nome correto
+                    setupCollabMode(currentUserCollab);
                 }
             }
-
         } else {
             console.log("Nenhum documento encontrado.");
             rawSchedule = {}; 
@@ -329,20 +328,16 @@ const targetPeerSelect = document.getElementById('targetPeerSelect');
 let selectedRequestDate = null;
 let selectedRequestType = 'troca_folga'; 
 
-// Abrir Modal de Solicitação
 function openRequestModal(dayIndex) {
     if(!currentUserCollab) return;
     selectedRequestDate = dayIndex;
     
     const dateStr = `${pad(dayIndex+1)}/${pad(selectedMonthObj.month+1)}`;
     document.getElementById('requestDateLabel').textContent = `Para o dia ${dateStr}`;
-    
-    // Reset campos
     document.getElementById('newShiftInput').value = '';
     targetPeerSelect.innerHTML = '<option value="">Selecione um colega...</option>';
     
     Object.keys(scheduleData).sort().forEach(name => {
-        // Mostra todos exceto o próprio usuário
         if(!name.toLowerCase().includes(currentUserCollab.toLowerCase())) {
             const opt = document.createElement('option');
             opt.value = name; opt.textContent = name;
@@ -353,7 +348,6 @@ function openRequestModal(dayIndex) {
     requestModal.classList.remove('hidden');
 }
 
-// Tabs dentro do Modal
 document.querySelectorAll('.req-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.req-type-btn').forEach(b => b.classList.remove('active', 'bg-purple-500/20', 'border-purple-500', 'text-white'));
@@ -376,7 +370,6 @@ document.querySelectorAll('.req-type-btn').forEach(btn => {
 
 btnCloseReq.addEventListener('click', () => requestModal.classList.add('hidden'));
 
-// Enviar Solicitação para Firestore
 btnSubmitReq.addEventListener('click', async () => {
     if(!selectedRequestDate && selectedRequestDate !== 0) return;
     
@@ -394,14 +387,12 @@ btnSubmitReq.addEventListener('click', async () => {
         const target = targetPeerSelect.value;
         if(!target) return alert("Selecione um colega.");
         reqData.target = target;
-        // FLUXO: Colega primeiro
         reqData.status = 'pendente_colega'; 
         reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
     } else {
         const newShift = document.getElementById('newShiftInput').value;
         if(!newShift) return alert("Digite o turno desejado.");
         reqData.newDetail = newShift;
-        // FLUXO: Direto para o Líder
         reqData.status = 'pendente_lider'; 
         reqData.description = `solicita mudança de turno para: ${newShift}`;
     }
@@ -420,7 +411,7 @@ btnSubmitReq.addEventListener('click', async () => {
 });
 
 // ==========================================
-// 8. GERENCIAMENTO DE NOTIFICAÇÕES (DRAWER)
+// 8. NOTIFICAÇÕES & PROCESSAMENTO
 // ==========================================
 const drawer = document.getElementById('notificationDrawer');
 const list = document.getElementById('notificationList');
@@ -445,7 +436,6 @@ function startRequestsListener() {
             const req = docSnap.data();
             const rid = docSnap.id;
             
-            // FILTROS DE VISUALIZAÇÃO
             let show = false;
             let canAction = false;
             
@@ -456,7 +446,6 @@ function startRequestsListener() {
                     count++;
                 }
             } else if (currentUserCollab) {
-                // Filtro flexível para nome do colaborador
                 if (req.status === 'pendente_colega' && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = true;
@@ -526,7 +515,6 @@ function renderRequestItem(id, req, canAction) {
     list.appendChild(item);
 }
 
-// Ações Globais
 window.rejectRequest = async (id) => {
     if(!confirm("Rejeitar solicitação?")) return;
     await updateDoc(doc(db, "requests", id), { status: 'rejeitado' });
@@ -569,241 +557,6 @@ function applyScheduleChange(req) {
     }
 }
 
-
-// ==========================================
-// 8. PROCESSAMENTO E UI (Core Logic)
-// ==========================================
-function generate5x2ScheduleDefaultForMonth(monthObj) {
-    const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
-    const arr = [];
-    for (let d=1; d<=totalDays; d++){
-        const dow = new Date(monthObj.year, monthObj.month, d).getDay();
-        arr.push((dow===0||dow===6) ? 'F' : 'T');
-    }
-    return arr;
-}
-
-function parseDayListForMonth(dayString, monthObj) {
-    if (!dayString) return [];
-    if (Array.isArray(dayString)) return dayString; 
-    const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
-    const days = new Set();
-    const normalized = String(dayString).replace(/\b(at[eé]|até|a)\b/gi,' a ').replace(/–|—/g,'-').replace(/\s+/g,' ').trim();
-    const parts = normalized.split(',').map(p=>p.trim()).filter(p=>p.length>0);
-
-    parts.forEach(part=>{
-        const simple = part.match(/^(\d{1,2})-(\d{1,2})$/);
-        if (simple) { for(let x=parseInt(simple[1]); x<=parseInt(simple[2]); x++) if(x>=1 && x<=totalDays) days.add(x); return; }
-        const number = part.match(/^(\d{1,2})$/);
-        if (number) { const v=parseInt(number[1]); if(v>=1 && v<=totalDays) days.add(v); return; }
-        if (/fins? de semana|fim de semana/i.test(part)) {
-            for (let d=1; d<=totalDays; d++){ const dow = new Date(monthObj.year, monthObj.month, d).getDay(); if (dow===0||dow===6) days.add(d); }
-            return;
-        }
-        if (/segunda a sexta/i.test(part)) {
-            for (let d=1; d<=totalDays; d++){ const dow = new Date(monthObj.year, monthObj.month, d).getDay(); if (dow>=1 && dow<=5) days.add(d); }
-            return;
-        }
-    });
-    return Array.from(days).sort((a,b)=>a-b);
-}
-
-function buildFinalScheduleForMonth(employeeData, monthObj) {
-    const totalDays = new Date(monthObj.year, monthObj.month+1, 0).getDate();
-    if (employeeData.calculatedSchedule && Array.isArray(employeeData.calculatedSchedule)) return employeeData.calculatedSchedule;
-
-    const schedule = new Array(totalDays).fill(null);
-    let tArr = [];
-    if(typeof employeeData.T === 'string' && /segunda a sexta/i.test(employeeData.T)) tArr = generate5x2ScheduleDefaultForMonth(monthObj);
-    else if(Array.isArray(employeeData.T)) {
-        const arr = new Array(totalDays).fill('F');
-        employeeData.T.forEach(x => { if(typeof x === 'number') arr[x-1] = 'T'; });
-        tArr = arr;
-    }
-
-    const vacDays = parseDayListForMonth(employeeData.FE, monthObj);
-    vacDays.forEach(d => { if (d>=1 && d<=totalDays) schedule[d-1] = 'FE'; });
-    const fsDays = parseDayListForMonth(employeeData.FS, monthObj);
-    fsDays.forEach(d => { if(schedule[d-1] !== 'FE') schedule[d-1] = 'FS'; });
-    const fdDays = parseDayListForMonth(employeeData.FD, monthObj);
-    fdDays.forEach(d => { if(schedule[d-1] !== 'FE') schedule[d-1] = 'FD'; });
-
-    for(let i=0; i<totalDays; i++) {
-        if(!schedule[i]) {
-            if(tArr[i] === 'T') schedule[i] = 'T';
-            else schedule[i] = 'F';
-        }
-    }
-    return schedule;
-}
-
-function processScheduleData() {
-    scheduleData = {};
-    if (!rawSchedule) return;
-    Object.keys(rawSchedule).forEach(name => {
-        const finalArr = buildFinalScheduleForMonth(rawSchedule[name], selectedMonthObj);
-        scheduleData[name] = { info: rawSchedule[name], schedule: finalArr };
-        rawSchedule[name].calculatedSchedule = finalArr;
-    });
-    const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
-    const slider = document.getElementById('dateSlider');
-    if (slider) {
-        slider.max = totalDays;
-        document.getElementById('sliderMaxLabel').textContent = `Dia ${totalDays}`;
-        if (currentDay > totalDays) currentDay = totalDays;
-        slider.value = currentDay;
-    }
-}
-
-// Chart Logic
-function updateDailyView() {
-    const currentDateLabel = document.getElementById('currentDateLabel');
-    if(currentDateLabel) {
-        const dayOfWeekIndex = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
-        currentDateLabel.textContent = `${daysOfWeek[dayOfWeekIndex]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
-    }
-
-    let w=0, o=0, v=0, os=0;
-    let wH='', oH='', vH='', osH='';
-
-    if (Object.keys(scheduleData).length === 0) return;
-
-    Object.keys(scheduleData).forEach(name=>{
-        const emp = scheduleData[name];
-        let status = emp.schedule[currentDay-1] || 'F';
-        let display = status;
-        
-        if(status === 'T') w++; else if(status === 'FE') v++; else o++;
-
-        const row = `
-            <li class="flex justify-between items-center text-sm p-4 rounded-xl mb-2 bg-[#1A1C2E] hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500 transition-all shadow-sm">
-                <div class="flex flex-col">
-                    <span class="font-bold text-gray-200">${name}</span>
-                    <span class="text-[10px] text-gray-500 font-mono">${emp.info.Horário||'--'}</span>
-                </div>
-                <span class="day-status status-${display} rounded-lg px-2.5 py-1 text-[10px] font-bold tracking-wide border-0 bg-opacity-10">${statusMap[display]||display}</span>
-            </li>`;
-        if (status==='T') wH+=row; else if (['FE'].includes(status)) vH+=row; else oH+=row;
-    });
-    
-    document.getElementById('kpiWorking').textContent = w;
-    document.getElementById('kpiOff').textContent = o;
-    document.getElementById('kpiVacation').textContent = v;
-    document.getElementById('listWorking').innerHTML = wH;
-    document.getElementById('listOff').innerHTML = oH;
-    document.getElementById('listVacation').innerHTML = vH;
-    
-    renderMonthlyTrendChart();
-}
-
-function renderMonthlyTrendChart() {
-    const ctx = document.getElementById('dailyChart').getContext('2d');
-    if(dailyChart) dailyChart.destroy();
-    dailyChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Ativos', 'Folga'],
-            datasets: [{ data: [parseInt(document.getElementById('kpiWorking').textContent), parseInt(document.getElementById('kpiOff').textContent)], backgroundColor: ['#34D399', '#FBBF24'], borderWidth: 0 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }
-    });
-}
-
-// ==========================================
-// 9. PERSONAL VIEW & CALENDAR INTERACTIONS
-// ==========================================
-function initSelect() {
-    const select = document.getElementById('employeeSelect');
-    if (!select) return;
-    
-    if (currentUserCollab) {
-        select.innerHTML = `<option value="${currentUserCollab}">${currentUserCollab}</option>`;
-        select.disabled = true;
-    } else {
-        select.innerHTML = '<option value="">Selecione um colaborador</option>';
-        Object.keys(scheduleData).sort().forEach(name=>{
-            const opt = document.createElement('option'); opt.value=name; opt.textContent=name; select.appendChild(opt);
-        });
-        select.disabled = false;
-    }
-    
-    const newSelect = select.cloneNode(true);
-    select.parentNode.replaceChild(newSelect, select);
-    newSelect.addEventListener('change', e => {
-        if(e.target.value) updatePersonalView(e.target.value);
-    });
-}
-
-function updatePersonalView(name) {
-    const emp = scheduleData[name];
-    if (!emp) return;
-    const card = document.getElementById('personalInfoCard');
-    
-    card.classList.remove('hidden');
-    card.className = "mb-8 bg-[#1A1C2E] rounded-xl border border-[#2E3250] overflow-hidden";
-    card.innerHTML = `
-        <div class="px-6 py-5 flex justify-between items-center bg-gradient-to-r from-[#1A1C2E] to-[#2E3250]/30">
-            <div>
-                <h2 class="text-xl md:text-2xl font-bold text-white tracking-tight">${name}</h2>
-                <p class="text-purple-400 text-xs font-bold uppercase tracking-widest mt-1">${emp.info.Cargo || 'Colaborador'}</p>
-            </div>
-        </div>
-    `;
-
-    document.getElementById('calendarContainer').classList.remove('hidden');
-    updateCalendar(name, emp.schedule);
-}
-
-function updateCalendar(name, schedule) {
-    const grid = document.getElementById('calendarGrid');
-    grid.innerHTML = '';
-    grid.className = 'calendar-grid-container';
-    
-    const m = { y: selectedMonthObj.year, mo: selectedMonthObj.month };
-    const empty = new Date(m.y, m.mo, 1).getDay();
-    for(let i=0;i<empty;i++) grid.insertAdjacentHTML('beforeend','<div class="calendar-cell bg-[#1A1C2E] opacity-50"></div>');
-    
-    schedule.forEach((st, i) => {
-        const cell = document.createElement('div');
-        cell.className = "calendar-cell relative group hover:bg-[#2E3250] transition-colors";
-        
-        // INTERAÇÃO: Admin edita direto, Colaborador abre Modal
-        if (isAdmin || (currentUserCollab === name)) {
-            cell.classList.add('cursor-pointer');
-            cell.onclick = () => {
-                if(isAdmin) handleAdminClick(name, i);
-                else openRequestModal(i);
-            };
-        }
-
-        cell.innerHTML = `
-            <div class="day-number group-hover:text-white transition-colors">${pad(i+1)}</div>
-            <div class="day-status-badge status-${st}">${statusMap[st]||st}</div>
-        `;
-        grid.appendChild(cell);
-    });
-}
-
-function handleAdminClick(name, dayIndex) {
-    const emp = scheduleData[name];
-    const sequence = ['T', 'F', 'FS', 'FD', 'FE'];
-    let current = emp.schedule[dayIndex];
-    let next = sequence[(sequence.indexOf(current) + 1) % sequence.length];
-    
-    emp.schedule[dayIndex] = next;
-    rawSchedule[name].calculatedSchedule = emp.schedule;
-    
-    const statusEl = document.getElementById('saveStatus');
-    const statusIcon = document.getElementById('saveStatusIcon');
-    if(statusEl) {
-        statusEl.textContent = "Alterado (Não salvo)";
-        statusEl.className = "text-xs text-orange-400 font-bold";
-        statusIcon.className = "w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse";
-    }
-
-    updateCalendar(name, emp.schedule);
-}
-
 // ==========================================
 // 10. BOOTSTRAP
 // ==========================================
@@ -812,7 +565,6 @@ function initGlobal() {
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
     
-    // Baixa dados em memória (mas não mostra UI até logar)
     loadDataFromCloud();
 }
 
