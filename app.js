@@ -134,8 +134,9 @@ onAuthStateChanged(auth, async (user) => {
             console.error("Erro verificação admin:", error);
         }
 
-        // Admins Estáticos (Adicione aqui o email que está com problema para garantir o acesso)
-        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gmail.com', 'karina.krisan@sitelbra.com.br']; // Adicionado para teste
+        // Admins Estáticos (Apenas os reais administradores)
+        // REMOVIDO: 'karina.krisan@sitelbra.com.br' desta lista para ela logar como colaborador
+        const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gmail.com']; 
 
         if (isDatabaseAdmin || staticAdmins.includes(userEmail)) {
             console.log("Acesso concedido: ADMIN");
@@ -143,6 +144,7 @@ onAuthStateChanged(auth, async (user) => {
             revealApp();
         } else {
             console.log("Acesso concedido: COLABORADOR");
+            
             // Tenta buscar o nome real no DB de colaboradores
             let dbName = null;
             try {
