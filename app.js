@@ -92,31 +92,21 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER: ESTRATÉGIA DE BUSCA TOTAL ===
+// === AUTH LISTENER ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
         console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
 
-        // =====================================================
-        // ESTRATÉGIA 1: ADMINISTRADOR
-        // =====================================================
+        // 1. VERIFICAÇÃO DE ADMIN
         let isDatabaseAdmin = false;
         try {
-            // Tentativa A: Pelo UID direto (Rápido e Seguro)
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
-            
-            // Tentativa B: Query 'email' (minúsculo)
             const qAdminLower = query(collection(db, "administradores"), where("email", "==", userEmail));
-            
-            // Tentativa C: Query 'Email' (Maiúsculo)
             const qAdminUpper = query(collection(db, "administradores"), where("Email", "==", userEmail));
-
-            // Executa queries em paralelo
             const [snapLower, snapUpper] = await Promise.all([getDocs(qAdminLower), getDocs(qAdminUpper)]);
 
             if (adminDoc.exists() || !snapLower.empty || !snapUpper.empty) {
-                console.log(">> Admin Encontrado!");
                 isDatabaseAdmin = true;
             }
         } catch (e) { console.error("Erro Admin Check:", e); }
@@ -128,43 +118,30 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // =====================================================
-        // ESTRATÉGIA 2: COLABORADOR
-        // =====================================================
+        // 2. VERIFICAÇÃO DE COLABORADOR
         let isDatabaseCollab = false;
         let dbName = null;
-        
         try {
-            // Tentativa A: Pelo UID direto
             const collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
-            
-            // Tentativa B: Query 'email' (minúsculo) - Compatível com image_4c0f78.png
             const qCollabLower = query(collection(db, "colaboradores"), where("email", "==", userEmail));
-            
-            // Tentativa C: Query 'Email' (Maiúsculo) - Compatível com image_4c8079.png
             const qCollabUpper = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
-
             const [snapCLower, snapCUpper] = await Promise.all([getDocs(qCollabLower), getDocs(qCollabUpper)]);
 
             if (collabDoc.exists()) {
-                console.log(">> Colaborador encontrado pelo UID!");
                 const data = collabDoc.data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
             } 
             else if (!snapCLower.empty) {
-                console.log(">> Colaborador encontrado pelo email (minúsculo)!");
                 const data = snapCLower.docs[0].data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
             }
             else if (!snapCUpper.empty) {
-                console.log(">> Colaborador encontrado pelo Email (Maiúsculo)!");
                 const data = snapCUpper.docs[0].data();
                 isDatabaseCollab = true;
                 dbName = data.nome || data.Nome || data.name;
             }
-
         } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
@@ -176,12 +153,7 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // =====================================================
-        // FALHA TOTAL
-        // =====================================================
-        console.warn(">> FALHA: Usuário não encontrado em NENHUMA tentativa.");
-        alert(`ERRO DE LOGIN:\n\nUsuario: ${userEmail}\nUID: ${user.uid}\n\nO sistema tentou buscar pelo ID e pelo E-mail, mas o Firebase não retornou o documento.\n\nIsso pode ser Permissão de Leitura no Banco de Dados.`);
-        
+        alert(`ERRO DE LOGIN: Usuário não encontrado no banco de dados.`);
         signOut(auth);
         hideApp();
 
@@ -228,17 +200,20 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
+    // Força atualização imediata do Select e Renderização
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
-        if (empSelect.options.length <= 1 && Object.keys(scheduleData).length > 0) {
-             Object.keys(scheduleData).sort().forEach(key => {
-                const opt = document.createElement('option');
-                opt.value = key; opt.textContent = key;
-                empSelect.appendChild(opt);
-            });
-        }
+        empSelect.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        empSelect.appendChild(opt);
         empSelect.value = name;
-        empSelect.dispatchEvent(new Event('change'));
+        empSelect.disabled = true; // Trava o select
+        
+        if (scheduleData && scheduleData[name]) {
+            renderPersonalCalendar(name);
+        }
     }
 
     const personalTab = document.querySelector('[data-tab="personal"]');
@@ -309,15 +284,11 @@ async function loadDataFromCloud() {
             rawSchedule = docSnap.data();
             processScheduleData(); 
             updateDailyView();
-            initSelect();
+            initSelect(); // Atualiza a lista/restrição
             
-            const user = auth.currentUser;
-            if (user && !isAdmin && user.email) {
-                const betterName = resolveCollaboratorName(user.email);
-                if (betterName !== currentUserCollab) {
-                    currentUserCollab = betterName;
-                    setupCollabMode(currentUserCollab);
-                }
+            // Se for colaborador, força a renderização da escala dele
+            if (!isAdmin && currentUserCollab && scheduleData[currentUserCollab]) {
+                setupCollabMode(currentUserCollab);
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -651,18 +622,45 @@ function updateDailyView() {
     updateChart(cWorking, cOff, cOffShift, cVacation);
 }
 
-// Inicializa Select de Colaboradores
+// Inicializa Select de Colaboradores (COM LÓGICA DE RESTRIÇÃO)
 function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
 
-    select.innerHTML = '<option value="">Selecione um colaborador</option>';
-    Object.keys(scheduleData).sort().forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name; opt.textContent = name;
-        select.appendChild(opt);
-    });
+    // Limpa lista atual
+    select.innerHTML = '';
 
+    // Se for COLABORADOR: trava e mostra só ele
+    if (!isAdmin && currentUserCollab) {
+        const opt = document.createElement('option');
+        opt.value = currentUserCollab;
+        opt.textContent = currentUserCollab;
+        select.appendChild(opt);
+        select.value = currentUserCollab;
+        select.disabled = true; // Impede clicar para mudar
+        
+        // Auto-renderiza
+        if (scheduleData[currentUserCollab]) {
+            renderPersonalCalendar(currentUserCollab);
+        }
+    } 
+    // Se for ADMIN: mostra todos e destrava
+    else {
+        select.disabled = false;
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Selecione um colaborador";
+        select.appendChild(defaultOpt);
+
+        Object.keys(scheduleData).sort().forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name; 
+            opt.textContent = name;
+            select.appendChild(opt);
+        });
+    }
+
+    // Listener de mudança (só útil para admin)
     select.addEventListener('change', (e) => {
         const name = e.target.value;
         if (name && scheduleData[name]) renderPersonalCalendar(name);
