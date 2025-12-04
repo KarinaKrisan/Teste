@@ -103,28 +103,26 @@ onAuthStateChanged(auth, async (user) => {
             setAdminMode(true);
             revealApp();
         } else {
-            // --- 2. VERIFICAÇÃO DE COLABORADOR (COLEÇÃO 'colaboradores') ---
-            console.log("Verificando base de colaboradores...");
+            // --- 2. VERIFICAÇÃO DE COLABORADOR (COLEÇÃO 'colaboradores' + BUSCA INTELIGENTE) ---
+            console.log("Verificando identidade do colaborador...");
             let dbName = null;
 
             try {
-                // Busca documento na coleção 'colaboradores' usando o UID do Auth
+                // Busca documento na coleção 'colaboradores' (Opcional, se existir cadastro formal)
                 const collabDocRef = doc(db, "colaboradores", user.uid);
                 const collabSnap = await getDoc(collabDocRef);
 
                 if (collabSnap.exists()) {
                     const data = collabSnap.data();
-                    // Tenta pegar o nome do campo 'nome' ou 'name'
                     dbName = data.nome || data.name;
-                    console.log("Colaborador encontrado no DB:", dbName);
-                } else {
-                    console.log("Colaborador não encontrado na base de dados pelo UID.");
                 }
             } catch (e) {
                 console.error("Erro ao buscar dados do colaborador:", e);
             }
 
-            // Define o nome: Prioridade para o DB, senão extrai do e-mail
+            // Define o nome: 
+            // 1. Nome explícito no banco 'colaboradores'
+            // 2. Busca inteligente baseada no e-mail contra a 'scheduleData'
             const finalName = dbName || resolveCollaboratorName(user.email);
             
             currentUserCollab = finalName;
@@ -137,21 +135,50 @@ onAuthStateChanged(auth, async (user) => {
     updateDailyView();
 });
 
-// Função auxiliar para formatar nome do email (caso não ache no banco)
+// Função auxiliar INTELIGENTE para achar o nome na lista baseado no email
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
-    const rawName = email.split('@')[0].replace(/\./g, ' ');
     
-    // Tenta achar match na escala carregada
+    // 1. Extrai prefixo e prepara variações
+    const prefix = email.split('@')[0].toLowerCase(); // ex: karina.krisan
+    const variations = [
+        prefix,                                     // karina.krisan
+        prefix.replace(/\./g, ' '),                 // karina krisan
+        prefix.replace(/\./g, ''),                  // karinakrisan
+        prefix.replace(/\./g, '_')                  // karina_krisan
+    ];
+
+    // 2. Se temos dados de escala carregados, procuramos um match real
     if (Object.keys(scheduleData).length > 0) {
-        const match = Object.keys(scheduleData).find(dbName => 
-            dbName.toLowerCase().includes(rawName.toLowerCase()) || 
-            rawName.toLowerCase().includes(dbName.toLowerCase())
-        );
-        if (match) return match;
+        // Percorre todas as chaves (nomes) da escala
+        const matchKey = Object.keys(scheduleData).find(dbKey => {
+            const normDbKey = dbKey.toLowerCase();
+            const normDbKeyNoSpace = normDbKey.replace(/\s+/g, '');
+            
+            // Verifica se alguma variação do email bate com o nome no banco
+            return variations.some(v => {
+                const normVar = v.toLowerCase();
+                const normVarNoSpace = normVar.replace(/\s+/g, '');
+                
+                return (
+                    normDbKey === normVar ||                    // Match exato (normalizado)
+                    normDbKeyNoSpace === normVarNoSpace ||      // Match sem espaços (karinakrisan === karinakrisan)
+                    normDbKey.includes(normVar.replace(/\./g, ' ')) // Match parcial
+                );
+            });
+        });
+
+        if (matchKey) {
+            console.log(`Nome resolvido via escala: ${email} -> ${matchKey}`);
+            return matchKey; // Retorna a chave exata do objeto scheduleData
+        }
     }
     
-    return rawName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    // 3. Fallback: Formata bonito se não achar
+    console.log(`Nome não encontrado na escala, usando formatação padrão para: ${prefix}`);
+    return prefix.replace(/\./g, ' ').split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
 }
 
 function setAdminMode(active) {
@@ -197,17 +224,21 @@ function setupCollabMode(name) {
     // Auto-select na view pessoal
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
+        // Tenta selecionar o valor exato primeiro
         empSelect.value = name;
-        // Busca fuzzy no select se o nome exato não bater
-        if(empSelect.selectedIndex === -1 && name) {
+        
+        // Se falhar, tenta achar a opção correta no dropdown manualmente
+        if(empSelect.selectedIndex === -1) {
              for (let i = 0; i < empSelect.options.length; i++) {
-                if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
+                if (empSelect.options[i].text === name) {
                     empSelect.selectedIndex = i;
-                    empSelect.value = empSelect.options[i].value; 
+                    empSelect.value = empSelect.options[i].value;
                     break;
                 }
             }
         }
+        
+        // Dispara evento para carregar a escala
         empSelect.dispatchEvent(new Event('change'));
     }
 
@@ -287,11 +318,20 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect();
             
-            // Revalida nome se user já estiver logado
+            // RE-RESOLUÇÃO DE NOME:
+            // Importante: Se os dados chegam DEPOIS do login, precisamos
+            // rodar a lógica de nome novamente para garantir o match na escala
             const user = auth.currentUser;
             if (user && !isAdmin && user.email) {
-                // Tenta recarregar modo colaborador para garantir nome certo
-                if(currentUserCollab) setupCollabMode(currentUserCollab);
+                const betterName = resolveCollaboratorName(user.email);
+                // Se achou um nome melhor (que está na escala), atualiza a tela
+                if (betterName !== currentUserCollab) {
+                    currentUserCollab = betterName;
+                    setupCollabMode(currentUserCollab);
+                } else {
+                    // Mesmo se o nome for igual, garante que a view pessoal seja carregada
+                    setupCollabMode(currentUserCollab);
+                }
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -395,7 +435,6 @@ btnSubmitReq.addEventListener('click', async () => {
     };
 
     // --- LÓGICA DE APROVAÇÃO ---
-    // Caso 1: Troca de Folga -> Vai para o Colega primeiro
     if (selectedRequestType === 'troca_folga') {
         const target = targetPeerSelect.value;
         if(!target) return alert("Selecione um colega.");
@@ -403,7 +442,6 @@ btnSubmitReq.addEventListener('click', async () => {
         reqData.status = 'pendente_colega'; 
         reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
     } 
-    // Caso 2: Mudança de Turno -> Vai direto para o Líder
     else {
         const newShift = document.getElementById('newShiftInput').value;
         if(!newShift) return alert("Digite o turno desejado.");
