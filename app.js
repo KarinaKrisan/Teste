@@ -2,7 +2,6 @@
 // ==========================================
 // 1. IMPORTAÇÕES FIREBASE
 // ==========================================
-// Adicionado 'getDocs' para permitir a busca por campo
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
@@ -74,35 +73,43 @@ function hideApp() {
 // === AUTH LISTENER PRINCIPAL ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        console.log("Usuário detectado:", user.email);
+        console.log("Usuário detectado:", user.email, "| UID:", user.uid);
         
-        // --- LÓGICA DE VERIFICAÇÃO DE ADMIN (ROBUSTA) ---
         let isDatabaseAdmin = false;
         
         try {
-            // 1. Tenta buscar pelo ID do documento (ex: administradores/email@teste.com)
-            const adminDocRef = doc(db, "administradores", user.email);
-            const adminDocSnap = await getDoc(adminDocRef);
+            // VERIFICAÇÃO 1: Busca pelo UID (ID do documento = UID do Auth)
+            // Esta é a verificação correta se os IDs são iguais
+            const adminDocRefUid = doc(db, "administradores", user.uid);
+            const adminDocSnapUid = await getDoc(adminDocRefUid);
             
-            if (adminDocSnap.exists()) {
-                console.log("Admin encontrado por ID");
+            if (adminDocSnapUid.exists()) {
+                console.log("Admin encontrado por UID (Document ID)");
                 isDatabaseAdmin = true;
             } else {
-                // 2. FALLBACK: Tenta buscar se existe um campo 'email' igual ao do usuário
-                // Isso cobre casos onde o ID é aleatório
-                const q = query(collection(db, "administradores"), where("email", "==", user.email));
-                const querySnapshot = await getDocs(q);
+                // VERIFICAÇÃO 2: Busca pelo E-mail como ID (caso antigo)
+                const adminDocRefEmail = doc(db, "administradores", user.email);
+                const adminDocSnapEmail = await getDoc(adminDocRefEmail);
                 
-                if (!querySnapshot.empty) {
-                    console.log("Admin encontrado por Query de campo");
+                if (adminDocSnapEmail.exists()) {
+                    console.log("Admin encontrado por Email (Document ID)");
                     isDatabaseAdmin = true;
+                } else {
+                    // VERIFICAÇÃO 3: Busca por campo 'email' dentro da coleção
+                    const q = query(collection(db, "administradores"), where("email", "==", user.email));
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (!querySnapshot.empty) {
+                        console.log("Admin encontrado por Query de campo 'email'");
+                        isDatabaseAdmin = true;
+                    }
                 }
             }
         } catch (error) {
             console.error("Erro ao verificar permissões de admin no Firestore:", error);
         }
 
-        // Mantemos os admins estáticos como segurança extra
+        // Mantemos os admins estáticos como segurança extra (Super Admins)
         const staticAdmins = ['admin@cronos.com', 'contatokarinakrisan@gamil.com'];
 
         if (isDatabaseAdmin || staticAdmins.includes(user.email)) {
@@ -111,7 +118,6 @@ onAuthStateChanged(auth, async (user) => {
             revealApp();
         } else {
             console.log("Acesso concedido: COLABORADOR");
-            // Tenta resolver o nome baseado no e-mail
             const resolvedName = resolveCollaboratorName(user.email);
             currentUserCollab = resolvedName;
             setupCollabMode(currentUserCollab);
