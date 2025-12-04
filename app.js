@@ -57,7 +57,6 @@ function normalizeString(str) {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-// Gera iniciais para o Avatar (ex: Karina Krisan -> KK)
 function getInitials(name) {
     if (!name) return "CR";
     const parts = name.split(' ');
@@ -77,7 +76,6 @@ function resolveCollaboratorName(email) {
         });
         if (matchKey) return matchKey;
     }
-    
     return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -234,13 +232,12 @@ const btnLogout = document.getElementById('btnLogout');
 if(btnLogout) btnLogout.addEventListener('click', () => signOut(auth));
 
 // ==========================================
-// 5. MODO COLABORADOR - LOGIN & LOGOUT
+// 5. LOGIN
 // ==========================================
 const collabModal = document.getElementById('collabLoginModal');
 const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
-
 const emailInput = document.getElementById('collabEmailInput');
 const passInput = document.getElementById('collabPassInput');
 
@@ -280,19 +277,12 @@ if(btnConfirmCollab) btnConfirmCollab.addEventListener('click', performLogin);
 
 if(emailInput) {
     emailInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            passInput.focus(); 
-        }
+        if (e.key === 'Enter') { e.preventDefault(); passInput.focus(); }
     });
 }
-
 if(passInput) {
     passInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            performLogin(); 
-        }
+        if (e.key === 'Enter') { e.preventDefault(); performLogin(); }
     });
 }
 
@@ -300,13 +290,12 @@ document.getElementById('btnCollabLogout')?.addEventListener('click', () => sign
 
 
 // ==========================================
-// 6. GESTÃO DE DADOS E MÊS
+// 6. GESTÃO DE DADOS
 // ==========================================
 
 function renderMonthSelector() {
     const container = document.getElementById('monthSelectorContainer');
     if(!container) return;
-
     if(container.innerHTML !== '') return;
 
     const select = document.createElement('select');
@@ -378,12 +367,16 @@ async function saveToCloud() {
     try {
         await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
         if(status) {
-            status.textContent = "Sincronizado";
-            statusIcon.className = "w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]";
+            status.textContent = "Salvo!";
+            statusIcon.className = "w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]";
         }
         setTimeout(() => {
             btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar';
-        }, 1000);
+            if(status) {
+                status.textContent = "Sincronizado";
+                statusIcon.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+            }
+        }, 2000);
     } catch (e) {
         console.error("Erro ao salvar:", e);
         btn.innerHTML = 'Erro';
@@ -487,7 +480,7 @@ if(btnSubmitReq) {
 }
 
 // ==========================================
-// 8. NOTIFICAÇÕES
+// 8. NOTIFICAÇÕES (COM AUTOMAÇÃO)
 // ==========================================
 const drawer = document.getElementById('notificationDrawer');
 const list = document.getElementById('notificationList');
@@ -563,7 +556,7 @@ function renderRequestItem(id, req, canAction) {
         actionButtons = `
             <div class="flex gap-2 mt-3">
                 <button onclick="window.rejectRequest('${id}')" class="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-400 py-2 rounded text-xs font-bold border border-red-500/30">Recusar</button>
-                <button onclick="window.acceptRequest('${id}', '${req.status}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded text-xs font-bold shadow-lg">${btnText}</button>
+                <button onclick="window.acceptRequest('${id}', '${req.status}', '${req.type}', '${req.requester}', '${req.newDetail}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded text-xs font-bold shadow-lg">${btnText}</button>
             </div>
         `;
     }
@@ -587,18 +580,34 @@ window.rejectRequest = async (id) => {
     await updateDoc(doc(db, "requests", id), { status: 'rejeitado' });
 }
 
-window.acceptRequest = async (id, currentStatus) => {
+window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => {
     if (currentStatus === 'pendente_colega') {
         await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
         alert("Você concordou! Enviado para o líder.");
     }
     else if (currentStatus === 'pendente_lider' && isAdmin) {
-        if(!confirm("Aprovar e aplicar alterações na escala?")) return;
-        const reqSnap = await getDoc(doc(db, "requests", id));
-        applyScheduleChange(reqSnap.data());
+        if(!confirm("Aprovar solicitação?")) return;
+        
+        if (type === 'mudanca_turno') {
+            try {
+                const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    await updateDoc(snap.docs[0].ref, { Turno: newDetail });
+                } else {
+                    const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
+                    const snap2 = await getDocs(q2);
+                    if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
+                }
+            } catch(e) { console.error(e); }
+        } else {
+            const reqSnap = await getDoc(doc(db, "requests", id));
+            applyScheduleChange(reqSnap.data());
+            await saveToCloud();
+        }
+
         await updateDoc(doc(db, "requests", id), { status: 'aprovado' });
-        await saveToCloud();
-        alert("Alteração aplicada!");
+        alert("Solicitação aprovada e aplicada!");
     }
 }
 
@@ -616,9 +625,39 @@ function applyScheduleChange(req) {
     }
 }
 
-// ==========================================
-// 9. FUNÇÕES DE RENDERIZAÇÃO E PROCESSAMENTO
-// ==========================================
+// --- INTEGRAÇÃO: EDIÇÃO DIRETA LÍDER ---
+// Ciclo de Status: T (Trab) -> F (Folga) -> FE (Férias) -> T
+function toggleDayStatus(name, index) {
+    const currentStatus = scheduleData[name].schedule[index];
+    let nextStatus = 'T';
+    
+    if (currentStatus === 'T') nextStatus = 'F';
+    else if (currentStatus === 'F') nextStatus = 'FE';
+    else if (currentStatus === 'FE') nextStatus = 'T';
+    else nextStatus = 'T'; // Default fallback
+
+    // Atualiza Memória
+    scheduleData[name].schedule[index] = nextStatus;
+    if (rawSchedule[name].calculatedSchedule) {
+        rawSchedule[name].calculatedSchedule[index] = nextStatus;
+    } else if (rawSchedule[name].schedule) {
+        rawSchedule[name].schedule[index] = nextStatus;
+    }
+
+    // Re-renderiza a tela
+    renderPersonalCalendar(name);
+    
+    // Atualiza status na barra
+    const statusEl = document.getElementById('saveStatus');
+    const iconEl = document.getElementById('saveStatusIcon');
+    if(statusEl) {
+        statusEl.textContent = "Alterações pendentes";
+        statusEl.className = "text-xs text-yellow-400 font-bold animate-pulse";
+        iconEl.className = "w-1.5 h-1.5 rounded-full bg-yellow-500";
+    }
+}
+
+// ... (Restante das funções de renderização, mesmo do anterior) ...
 
 function processScheduleData() {
     scheduleData = {};
@@ -738,7 +777,7 @@ function renderWeekendModules(name) {
     schedule.forEach((status, index) => {
         const day = index + 1;
         const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
-        const dayOfWeek = date.getDay(); // 0=Dom, 6=Sáb
+        const dayOfWeek = date.getDay(); 
 
         if ((dayOfWeek === 0 || dayOfWeek === 6) && status === 'T') {
             hasWeekendWork = true;
@@ -798,9 +837,6 @@ function renderWeekendModules(name) {
     }
 }
 
-// -----------------------------------------------------
-// ATUALIZAÇÃO: BUSCA DADOS EM 'COLABORADORES' E PREENCHE
-// -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
     const grid = document.getElementById('calendarGrid');
@@ -817,7 +853,6 @@ function renderPersonalCalendar(name) {
 
     if(infoCard) {
         infoCard.classList.remove('hidden');
-        // IDs inseridos nos campos para atualização via JS
         infoCard.innerHTML = `
             <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
                 <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
@@ -857,11 +892,9 @@ function renderPersonalCalendar(name) {
             </div>
         `;
         
-        // CHAMA A BUSCA DE DADOS ASSÍNCRONA
         fetchCollaboratorDetails(name);
     }
     
-    // Renderização do Grid (Dias)
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
 
     for (let i = 0; i < firstDayOfWeek; i++) {
@@ -885,7 +918,7 @@ function renderPersonalCalendar(name) {
 
         cell.innerHTML = `<div class="day-number">${dayNum}</div><div class="${badgeClass}">${status}</div>`;
         cell.addEventListener('click', () => {
-            if(isAdmin) alert(`Admin: Dia ${dayNum} de ${name}`);
+            if(isAdmin) toggleDayStatus(name, i); // EDITAR DIRETAMENTE
             else if(currentUserCollab === name) openRequestModal(i);
         });
 
@@ -895,27 +928,20 @@ function renderPersonalCalendar(name) {
     renderWeekendModules(name);
 }
 
-// --- FUNÇÃO AUXILIAR PARA BUSCAR DADOS DO CRACHÁ EM 'COLABORADORES' ---
 async function fetchCollaboratorDetails(name) {
     try {
-        // Tenta achar o documento onde Nome == name
         const q = query(collection(db, "colaboradores"), where("Nome", "==", name));
         const querySnapshot = await getDocs(q);
         
         let data = {};
-        
-        // Se achou pelo nome exato
         if (!querySnapshot.empty) {
             data = querySnapshot.docs[0].data();
-        } 
-        // Se não achou, tenta 'nome' minúsculo
-        else {
+        } else {
             const q2 = query(collection(db, "colaboradores"), where("nome", "==", name));
             const snap2 = await getDocs(q2);
             if(!snap2.empty) data = snap2.docs[0].data();
         }
 
-        // Atualiza a tela se encontrou algo
         if (data) {
             const cargo = data.Cargo || data.cargo || "Colaborador";
             const celula = data.Celula || data.celula || "Geral";
@@ -961,9 +987,6 @@ function updateChart(working, off, offShift, vacation) {
     });
 }
 
-// ==========================================
-// 10. BOOTSTRAP
-// ==========================================
 function initGlobal() {
     document.querySelectorAll('.tab-button').forEach(b => {
         b.addEventListener('click', () => {
@@ -983,7 +1006,6 @@ function initGlobal() {
         });
     }
     
-    // Inicia carregamento
     loadDataFromCloud();
 }
 
