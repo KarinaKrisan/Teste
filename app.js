@@ -36,7 +36,6 @@ let currentDay = new Date().getDate();
 const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-// Lista expandida de meses disponíveis para navegação
 const availableMonths = [
     { label: "Novembro 2025", year: 2025, month: 10 },
     { label: "Dezembro 2025", year: 2025, month: 11 }, 
@@ -45,7 +44,6 @@ const availableMonths = [
     { label: "Março 2026", year: 2026, month: 2 }
 ];
 
-// Tenta achar o mês atual, senão pega Dezembro 2025 como padrão
 let selectedMonthObj = availableMonths.find(m => m.year === currentDateObj.getFullYear() && m.month === currentDateObj.getMonth()) || availableMonths[1];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
@@ -117,7 +115,7 @@ onAuthStateChanged(auth, async (user) => {
         if (isDatabaseAdmin) {
             setAdminMode(true);
             revealApp();
-            renderMonthSelector(); // Renderiza o seletor
+            renderMonthSelector(); 
             loadDataFromCloud();
             return;
         }
@@ -151,7 +149,7 @@ onAuthStateChanged(auth, async (user) => {
             currentUserCollab = finalName;
             setupCollabMode(currentUserCollab);
             revealApp();
-            renderMonthSelector(); // Renderiza o seletor
+            renderMonthSelector(); 
             loadDataFromCloud();
             return;
         }
@@ -277,12 +275,10 @@ document.getElementById('btnCollabLogout')?.addEventListener('click', () => sign
 // 6. GESTÃO DE DADOS E MÊS
 // ==========================================
 
-// Função que cria o seletor de mês na interface
 function renderMonthSelector() {
     const container = document.getElementById('monthSelectorContainer');
     if(!container) return;
 
-    // Se já existe, não recria, apenas atualiza
     if(container.innerHTML !== '') return;
 
     const select = document.createElement('select');
@@ -301,12 +297,8 @@ function renderMonthSelector() {
     select.addEventListener('change', (e) => {
         const index = parseInt(e.target.value);
         selectedMonthObj = availableMonths[index];
-        
-        // Reseta dados para evitar mistura
         rawSchedule = {};
         scheduleData = {};
-        
-        // Recarrega
         loadDataFromCloud();
     });
 
@@ -328,23 +320,18 @@ async function loadDataFromCloud() {
             initSelect(); 
             
             if (!isAdmin && currentUserCollab) {
-                // Tenta resolver o nome novamente com os novos dados
                 const betterName = resolveCollaboratorName(auth.currentUser.email);
                 if(betterName) currentUserCollab = betterName;
                 setupCollabMode(currentUserCollab);
             }
         } else {
-            console.log("Nenhum documento encontrado para este mês.");
+            console.log("Nenhum documento encontrado.");
             rawSchedule = {}; 
-            scheduleData = {}; // Limpa dados antigos
+            scheduleData = {};
             processScheduleData(); 
             updateDailyView();
             initSelect();
-            
-            // Se for colaborador, limpa a tela dele
-            if (!isAdmin && currentUserCollab) {
-                setupCollabMode(currentUserCollab);
-            }
+            if (!isAdmin && currentUserCollab) setupCollabMode(currentUserCollab);
         }
     } catch (e) {
         console.error("Erro ao baixar dados:", e);
@@ -613,7 +600,7 @@ function processScheduleData() {
         const scheduleArr = rawSchedule[name].calculatedSchedule || rawSchedule[name].schedule || [];
         scheduleData[name] = {
             schedule: scheduleArr,
-            info: rawSchedule[name].info || {}
+            info: rawSchedule[name].info || {} // Pega infos como Cargo, Setor, etc.
         };
     });
 }
@@ -784,7 +771,7 @@ function renderWeekendModules(name) {
 }
 
 // -----------------------------------------------------
-// CORREÇÃO CRÍTICA DO CALENDÁRIO (DIAS DA SEMANA)
+// ATUALIZAÇÃO: HEADER COM INFOS COMPLETAS
 // -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
@@ -796,30 +783,56 @@ function renderPersonalCalendar(name) {
     container.classList.remove('hidden');
     grid.innerHTML = '';
     
-    if(infoCard) {
-        infoCard.classList.remove('hidden');
-        infoCard.innerHTML = `
-            <h3 class="text-lg font-bold text-white">${name}</h3>
-            <p class="text-sm text-gray-400">${selectedMonthObj.label}</p>
-        `;
-    }
-
     if(!scheduleData[name]) return;
     const schedule = scheduleData[name].schedule;
+    const info = scheduleData[name].info || {}; // Garante que info exista
+
+    // Pega dados do objeto 'info' ou usa placeholder
+    const cargo = info.cargo || "Não informado";
+    const celula = info.celula || "Geral";
+    const turno = info.turno || "--";
+    const horario = info.horario || "--:--";
+
+    if(infoCard) {
+        infoCard.classList.remove('hidden');
+        // Novo Layout Grid para as informações
+        infoCard.innerHTML = `
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-[#2E3250] pb-6 mb-6">
+                <div>
+                    <h3 class="text-3xl font-bold text-white mb-1">${name}</h3>
+                    <p class="text-sm text-purple-400 font-bold uppercase tracking-widest">${cargo}</p>
+                </div>
+                <div class="flex gap-4">
+                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold">Célula</p>
+                        <p class="text-sm text-white font-bold">${celula}</p>
+                    </div>
+                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold">Turno</p>
+                        <p class="text-sm text-white font-bold">${turno}</p>
+                    </div>
+                    <div class="bg-[#1A1C2E] border border-[#2E3250] px-4 py-2 rounded-lg text-center">
+                        <p class="text-[10px] text-gray-500 uppercase font-bold">Horário</p>
+                        <p class="text-sm text-white font-bold">${horario}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 mb-4">
+                <i class="fas fa-calendar-alt text-gray-500"></i>
+                <span class="text-sm text-gray-400 font-medium">${selectedMonthObj.label}</span>
+            </div>
+        `;
+    }
     
     // --- LÓGICA DE ALINHAMENTO ---
-    // Descobre em qual dia da semana cai o dia 1º do mês selecionado
-    // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
 
-    // Adiciona células vazias (fillers) antes do dia 1
     for (let i = 0; i < firstDayOfWeek; i++) {
         const emptyCell = document.createElement('div');
-        emptyCell.className = "calendar-cell bg-transparent border-none pointer-events-none"; // Célula invisível
+        emptyCell.className = "calendar-cell bg-transparent border-none pointer-events-none"; 
         grid.appendChild(emptyCell);
     }
 
-    // Renderiza os dias reais
     for (let i = 0; i < schedule.length; i++) {
         const status = schedule[i] || '-';
         const dayNum = i + 1;
