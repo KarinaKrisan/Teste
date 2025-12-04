@@ -42,12 +42,8 @@
 </head>
 <body class="text-gray-300 relative font-sans transition-all duration-300 antialiased selection:bg-purple-500 selection:text-white bg-[#0F1020] h-screen overflow-hidden">
 
-    <!-- ========================================== -->
-    <!-- TELA DE ENTRADA (LANDING PAGE) -->
-    <!-- ========================================== -->
     <div id="landingPage" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-[#050505] via-[#0F1020] to-[#1A1C2E]">
         
-        <!-- Efeitos de Fundo -->
         <div class="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[100px] pointer-events-none"></div>
         <div class="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-orange-900/10 rounded-full blur-[100px] pointer-events-none"></div>
 
@@ -66,7 +62,6 @@
             </p>
 
             <div class="space-y-4">
-                <!-- Botão Colaborador -->
                 <button id="btnLandingCollab" class="w-full bg-[#1A1C2E]/80 backdrop-blur-sm hover:bg-[#2E3250] border border-[#2E3250] hover:border-purple-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-purple-900/20 hover:-translate-y-1">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-colors">
@@ -80,7 +75,6 @@
                     <i class="fas fa-chevron-right text-gray-600 group-hover:text-white transition-colors"></i>
                 </button>
 
-                <!-- Botão Admin -->
                 <a href="login.html" class="w-full bg-[#1A1C2E]/80 backdrop-blur-sm hover:bg-[#2E3250] border border-[#2E3250] hover:border-orange-500/50 text-white p-5 rounded-2xl flex items-center justify-between group transition-all duration-300 shadow-lg hover:shadow-orange-900/20 hover:-translate-y-1">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-colors">
@@ -101,12 +95,8 @@
         </div>
     </div>
 
-    <!-- ========================================== -->
-    <!-- INTERFACE DA APLICAÇÃO (OCULTA INICIALMENTE) -->
-    <!-- ========================================== -->
     <div id="appInterface" class="hidden opacity-0 transition-opacity duration-700 h-full overflow-y-auto custom-scrollbar">
         
-        <!-- BARRA FLUTUANTE DO ADMIN -->
         <div id="adminToolbar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-2xl transition-all duration-500 animate-fade-in-up">
             <div class="bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5">
                 <div class="flex flex-col justify-center">
@@ -133,9 +123,8 @@
             </div>
         </div>
 
-        <!-- BARRA FLUTUANTE DO COLABORADOR -->
-        <div id="collabToolbar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-2xl transition-all duration-500 animate-fade-in-up">
-            <div class="bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5">
+        <div id="collabToolbar" class="hidden fixed bottom-6 inset-x-0 z-50 flex justify-center pointer-events-none">
+            <div class="pointer-events-auto w-[90%] max-w-2xl bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5 animate-fade-in-up">
                 <div class="flex flex-col justify-center">
                     <span class="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-0.5 flex items-center gap-1.5">
                         <i class="fas fa-user-astronaut"></i> Colaborador
@@ -185,7 +174,6 @@
 
             <main>
                 <div id="dailyView" class="tab-content active space-y-6">
-                    <!-- KPI Section -->
                     <section class="cronos-card p-6 md:p-8 rounded-3xl relative overflow-hidden">
                         <div class="absolute top-0 right-0 w-64 h-64 bg-purple-600/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
@@ -347,7 +335,6 @@
         </div>
     </div>
 
-    <!-- MODAL DE LOGIN COLABORADOR (ATUALIZADO PARA EMAIL/SENHA) -->
     <div id="collabLoginModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -379,7 +366,6 @@
         </div>
     </div>
 
-    <!-- MODAL DE SOLICITAÇÃO -->
     <div id="requestModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
             <button id="btnCloseRequestModal" class="absolute top-4 right-4 text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
@@ -429,7 +415,6 @@
         </div>
     </div>
 
-    <!-- PAINEL DE NOTIFICAÇÕES (DRAWER) -->
     <div id="notificationDrawer" class="fixed inset-y-0 right-0 w-full max-w-sm bg-[#1A1C2E] shadow-2xl transform translate-x-full transition-transform duration-300 z-[70] border-l border-[#2E3250]">
         <div class="flex flex-col h-full">
             <div class="p-5 border-b border-[#2E3250] flex justify-between items-center bg-[#0F1020]">
