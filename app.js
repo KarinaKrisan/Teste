@@ -233,37 +233,63 @@ const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
 
+// Inputs de Login
+const emailInput = document.getElementById('collabEmailInput');
+const passInput = document.getElementById('collabPassInput');
+
 if(btnLandingCollab) {
     btnLandingCollab.addEventListener('click', () => {
-        const emailInput = document.getElementById('collabEmailInput');
-        const passInput = document.getElementById('collabPassInput');
         if(emailInput) emailInput.value = '';
         if(passInput) passInput.value = '';
         collabModal.classList.remove('hidden');
+        // Foca no email ao abrir
+        setTimeout(() => { if(emailInput) emailInput.focus(); }, 100);
     });
 }
 
 if(btnCancelCollab) btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
+// --- LÓGICA DO LOGIN (BOTÃO) ---
+const performLogin = async () => {
+    const email = emailInput.value.trim();
+    const pass = passInput.value;
+    const btn = btnConfirmCollab;
+
+    if(!email || !pass) return alert("Preencha todos os campos.");
+
+    try {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        await signInWithEmailAndPassword(auth, email, pass);
+        collabModal.classList.add('hidden');
+    } catch (e) {
+        console.error(e);
+        let msg = "Erro no login.";
+        if(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
+        alert(msg);
+    } finally {
+        btn.innerHTML = 'Entrar';
+    }
+};
+
 if(btnConfirmCollab) {
-    btnConfirmCollab.addEventListener('click', async () => {
-        const email = document.getElementById('collabEmailInput').value.trim();
-        const pass = document.getElementById('collabPassInput').value;
-        const btn = btnConfirmCollab;
+    btnConfirmCollab.addEventListener('click', performLogin);
+}
 
-        if(!email || !pass) return alert("Preencha todos os campos.");
+// --- LÓGICA DA TECLA ENTER ---
+if(emailInput) {
+    emailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            passInput.focus(); // Enter no email vai pra senha
+        }
+    });
+}
 
-        try {
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            await signInWithEmailAndPassword(auth, email, pass);
-            collabModal.classList.add('hidden');
-        } catch (e) {
-            console.error(e);
-            let msg = "Erro no login.";
-            if(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
-            alert(msg);
-        } finally {
-            btn.innerHTML = 'Entrar';
+if(passInput) {
+    passInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            performLogin(); // Enter na senha faz o login
         }
     });
 }
