@@ -55,7 +55,6 @@ function normalizeString(str) {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-// Procura o nome na lista de escalas (scheduleData) baseado no email
 function resolveCollaboratorName(email) {
     if(!email) return "Colaborador";
     const prefix = email.split('@')[0];
@@ -69,7 +68,6 @@ function resolveCollaboratorName(email) {
         if (matchKey) return matchKey;
     }
     
-    // Fallback apenas visual
     return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -94,13 +92,13 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER: ESTRATÉGIA DE BUSCA TOTAL ===
+// === AUTH LISTENER ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
         console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
 
-        // 1. VERIFICAÇÃO DE ADMIN
+        // 1. ADMIN
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -120,10 +118,9 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. VERIFICAÇÃO DE COLABORADOR
+        // 2. COLABORADOR
         let isDatabaseCollab = false;
         let dbName = null;
-        
         try {
             const collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
             const qCollabLower = query(collection(db, "colaboradores"), where("email", "==", userEmail));
@@ -156,7 +153,6 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        console.warn(">> FALHA: Usuário não encontrado em NENHUMA tentativa.");
         alert(`ERRO DE LOGIN:\n\nUsuario: ${userEmail}\nUID: ${user.uid}\n\nO sistema tentou buscar pelo ID e pelo E-mail, mas o Firebase não retornou o documento.`);
         signOut(auth);
         hideApp();
@@ -186,7 +182,6 @@ function setAdminMode(active) {
     }
 }
 
-// === SETUP COLABORADOR (COM RESTRIÇÃO) ===
 function setupCollabMode(name) {
     isAdmin = false;
     const adminToolbar = document.getElementById('adminToolbar');
@@ -205,23 +200,16 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
-    // CONFIGURAÇÃO DO MENU SUSPENSO
     const empSelect = document.getElementById('employeeSelect');
     if(empSelect) {
-        // Limpa tudo
         empSelect.innerHTML = '';
-        
-        // Adiciona apenas o nome do colaborador logado
         const opt = document.createElement('option');
         opt.value = name;
         opt.textContent = name;
         empSelect.appendChild(opt);
-        
-        // Seleciona e trava
         empSelect.value = name;
         empSelect.disabled = true; 
         
-        // Se os dados já existem, desenha a tela
         if (scheduleData && scheduleData[name]) {
             renderPersonalCalendar(name);
         }
@@ -295,17 +283,10 @@ async function loadDataFromCloud() {
             rawSchedule = docSnap.data();
             processScheduleData(); 
             updateDailyView();
-            initSelect(); // Atualiza select (Admin ou Collab)
+            initSelect(); 
             
-            // Lógica essencial: se for colaborador, recalcula o nome com base na escala carregada
-            const user = auth.currentUser;
-            if (user && !isAdmin && user.email) {
-                const betterName = resolveCollaboratorName(user.email);
-                // Se o nome resolvido for diferente ou se a tela não atualizou, força
-                if (betterName && scheduleData[betterName]) {
-                    currentUserCollab = betterName;
-                    setupCollabMode(currentUserCollab);
-                }
+            if (!isAdmin && currentUserCollab && scheduleData[currentUserCollab]) {
+                setupCollabMode(currentUserCollab);
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -681,7 +662,7 @@ function initSelect() {
 }
 
 // ==========================================
-// RENDERIZAÇÃO CARDS FIM DE SEMANA
+// RENDERIZAÇÃO CARDS FIM DE SEMANA (ATUALIZADO)
 // ==========================================
 function renderWeekendModules(name) {
     const container = document.getElementById('weekendPlantaoContainer');
@@ -702,18 +683,47 @@ function renderWeekendModules(name) {
             const dayName = dayOfWeek === 0 ? 'Domingo' : 'Sábado';
             const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
 
+            // --- BUSCA COLEGAS QUE TAMBÉM TRABALHAM ('T') NESTE DIA ---
+            const colleagues = [];
+            Object.keys(scheduleData).forEach(peerName => {
+                if (peerName !== name && scheduleData[peerName].schedule[index] === 'T') {
+                    colleagues.push(peerName);
+                }
+            });
+
+            // GERA O HTML DOS COLEGAS COM O MESMO ESTILO DO "ESCALADO"
+            let colleaguesHtml = '';
+            if (colleagues.length > 0) {
+                colleaguesHtml = `<div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2">`;
+                colleagues.forEach(peer => {
+                    colleaguesHtml += `
+                        <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2">
+                            <i class="fas fa-user-astronaut"></i> <span>${peer}</span>
+                        </div>
+                    `;
+                });
+                colleaguesHtml += `</div>`;
+            } else {
+                colleaguesHtml = `<div class="mt-4 pt-3 border-t border-white/5 text-xs text-gray-500 italic">Plantão sozinho</div>`;
+            }
+
             const card = document.createElement('div');
-            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl flex items-center justify-between shadow-lg relative overflow-hidden group";
+            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden group transition-all hover:border-orange-500/50";
             
             card.innerHTML = `
-                <div class="absolute right-0 top-0 w-12 h-12 bg-orange-500/10 rounded-bl-full transition-all group-hover:bg-orange-500/20"></div>
-                <div>
-                    <p class="text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">${dayName}</p>
-                    <p class="text-white font-mono text-xl font-bold">${dateStr}</p>
+                <div class="absolute right-0 top-0 w-16 h-16 bg-orange-500/10 rounded-bl-full transition-all group-hover:bg-orange-500/20 pointer-events-none"></div>
+                
+                <div class="flex items-center justify-between relative z-10">
+                    <div>
+                        <p class="text-orange-400 text-[10px] font-bold uppercase tracking-wider mb-1">${dayName}</p>
+                        <p class="text-white font-mono text-2xl font-bold">${dateStr}</p>
+                    </div>
+                    <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-[0_0_10px_rgba(249,115,22,0.2)]">
+                        <i class="fas fa-briefcase"></i> <span>Escalado</span>
+                    </div>
                 </div>
-                <div class="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2">
-                    <i class="fas fa-briefcase"></i> <span>Escalado</span>
-                </div>
+
+                ${colleaguesHtml}
             `;
             container.appendChild(card);
         }
@@ -721,9 +731,9 @@ function renderWeekendModules(name) {
 
     if (!hasWeekendWork) {
         container.innerHTML = `
-            <div class="col-span-full text-center py-8 text-gray-500 border border-dashed border-gray-700 rounded-xl">
-                <i class="fas fa-couch text-2xl mb-2 opacity-50"></i>
-                <p class="text-xs">Folga em todos os finais de semana.</p>
+            <div class="col-span-full text-center py-10 text-gray-500 border border-dashed border-gray-700/50 rounded-xl bg-[#161828]/50">
+                <i class="fas fa-couch text-3xl mb-3 opacity-30"></i>
+                <p class="text-sm font-medium">Folga em todos os finais de semana.</p>
             </div>
         `;
     }
