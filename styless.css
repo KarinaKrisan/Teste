@@ -1,4 +1,4 @@
-/* styless.css - Cosmic Dark Theme */
+/* styless.css - Cosmic Dark Theme Updated */
 
 body {
     background-color: #0F1020; /* Deep Space Background */
@@ -130,6 +130,14 @@ body {
     color: #818CF8; 
     border: 1px solid rgba(99, 102, 241, 0.3); 
 }
+
+/* Badge de Status de Solicitação */
+.req-status { padding: 4px 8px; border-radius: 99px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid transparent; }
+.req-pending_partner { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border-color: rgba(245, 158, 11, 0.3); }
+.req-pending_leader { background: rgba(59, 130, 246, 0.1); color: #60A5FA; border-color: rgba(59, 130, 246, 0.3); }
+.req-approved { background: rgba(16, 185, 129, 0.1); color: #34D399; border-color: rgba(16, 185, 129, 0.3); }
+.req-rejected { background: rgba(239, 68, 68, 0.1); color: #F87171; border-color: rgba(239, 68, 68, 0.3); }
+
 
 /* Range Slider Customizado */
 input[type=range] {
