@@ -92,41 +92,34 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER PRINCIPAL (LÓGICA BLINDADA DE BUSCA) ===
+// === AUTH LISTENER: ESTRATÉGIA DE BUSCA TOTAL ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        const userEmail = user.email.trim(); // Remove espaços extras
-        console.log(`[AUTH] Iniciando verificação para: "${userEmail}" (UID: ${user.uid})`);
+        const userEmail = user.email.trim();
+        console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
 
-        // -----------------------------------------------------
-        // 1. VERIFICAÇÃO DE ADMIN (Busca por "email" e "Email")
-        // -----------------------------------------------------
+        // =====================================================
+        // ESTRATÉGIA 1: ADMINISTRADOR
+        // =====================================================
         let isDatabaseAdmin = false;
         try {
-            console.log("[DEBUG] Buscando em 'administradores'...");
+            // Tentativa A: Pelo UID direto (Rápido e Seguro)
+            const adminDoc = await getDoc(doc(db, "administradores", user.uid));
             
-            // Busca 1: Campo minúsculo 'email'
+            // Tentativa B: Query 'email' (minúsculo)
             const qAdminLower = query(collection(db, "administradores"), where("email", "==", userEmail));
-            const snapLower = await getDocs(qAdminLower);
-
-            // Busca 2: Campo Maiúsculo 'Email'
-            const qAdminUpper = query(collection(db, "administradores"), where("Email", "==", userEmail));
-            const snapUpper = await getDocs(qAdminUpper);
             
-            // Busca 3: Pelo UID direto (caso raro onde ID = UID)
-            const docUid = await getDoc(doc(db, "administradores", user.uid));
+            // Tentativa C: Query 'Email' (Maiúsculo)
+            const qAdminUpper = query(collection(db, "administradores"), where("Email", "==", userEmail));
 
-            if (!snapLower.empty) {
-                console.log(">> Encontrado admin via campo 'email' (minúsculo).");
-                isDatabaseAdmin = true;
-            } else if (!snapUpper.empty) {
-                console.log(">> Encontrado admin via campo 'Email' (Maiúsculo).");
-                isDatabaseAdmin = true;
-            } else if (docUid.exists()) {
-                console.log(">> Encontrado admin via UID direto.");
+            // Executa queries em paralelo
+            const [snapLower, snapUpper] = await Promise.all([getDocs(qAdminLower), getDocs(qAdminUpper)]);
+
+            if (adminDoc.exists() || !snapLower.empty || !snapUpper.empty) {
+                console.log(">> Admin Encontrado!");
                 isDatabaseAdmin = true;
             }
-        } catch (e) { console.error("Erro verif. admin:", e); }
+        } catch (e) { console.error("Erro Admin Check:", e); }
 
         if (isDatabaseAdmin) {
             setAdminMode(true);
@@ -135,44 +128,44 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // -----------------------------------------------------
-        // 2. VERIFICAÇÃO DE COLABORADOR (Busca por "email" e "Email")
-        // -----------------------------------------------------
+        // =====================================================
+        // ESTRATÉGIA 2: COLABORADOR
+        // =====================================================
         let isDatabaseCollab = false;
         let dbName = null;
         
         try {
-            console.log("[DEBUG] Buscando em 'colaboradores'...");
-
-            // Busca 1: Campo minúsculo 'email'
+            // Tentativa A: Pelo UID direto
+            const collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
+            
+            // Tentativa B: Query 'email' (minúsculo) - Compatível com image_4c0f78.png
             const qCollabLower = query(collection(db, "colaboradores"), where("email", "==", userEmail));
-            const snapCLower = await getDocs(qCollabLower);
-
-            // Busca 2: Campo Maiúsculo 'Email'
+            
+            // Tentativa C: Query 'Email' (Maiúsculo) - Compatível com image_4c8079.png
             const qCollabUpper = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
-            const snapCUpper = await getDocs(qCollabUpper);
 
-            // Busca 3: UID Direto
-            const docCRef = await getDoc(doc(db, "colaboradores", user.uid));
+            const [snapCLower, snapCUpper] = await Promise.all([getDocs(qCollabLower), getDocs(qCollabUpper)]);
 
-            if (!snapCLower.empty) {
-                console.log(">> Encontrado colaborador via campo 'email'.");
+            if (collabDoc.exists()) {
+                console.log(">> Colaborador encontrado pelo UID!");
+                const data = collabDoc.data();
+                isDatabaseCollab = true;
+                dbName = data.nome || data.Nome || data.name;
+            } 
+            else if (!snapCLower.empty) {
+                console.log(">> Colaborador encontrado pelo email (minúsculo)!");
                 const data = snapCLower.docs[0].data();
                 isDatabaseCollab = true;
-                dbName = data.nome || data.Nome;
-            } else if (!snapCUpper.empty) {
-                console.log(">> Encontrado colaborador via campo 'Email'.");
+                dbName = data.nome || data.Nome || data.name;
+            }
+            else if (!snapCUpper.empty) {
+                console.log(">> Colaborador encontrado pelo Email (Maiúsculo)!");
                 const data = snapCUpper.docs[0].data();
                 isDatabaseCollab = true;
-                dbName = data.nome || data.Nome;
-            } else if (docCRef.exists()) {
-                console.log(">> Encontrado colaborador via UID.");
-                const data = docCRef.data();
-                isDatabaseCollab = true;
-                dbName = data.nome || data.Nome;
+                dbName = data.nome || data.Nome || data.name;
             }
 
-        } catch (e) { console.error("Erro ao verificar colaborador:", e); }
+        } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
             const finalName = dbName || resolveCollaboratorName(user.email);
@@ -183,10 +176,11 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 3. SE FALHOU TUDO
-        console.warn(">> FALHA FATAL: Usuário autenticado mas não encontrado no banco.");
-        console.log(`Tentativa de busca falhou para: ${userEmail}`);
-        alert(`Seu usuário (${userEmail}) não foi encontrado nas bases de dados "administradores" ou "colaboradores".\n\nDica: Verifique se não há espaços em branco antes ou depois do e-mail no banco de dados.`);
+        // =====================================================
+        // FALHA TOTAL
+        // =====================================================
+        console.warn(">> FALHA: Usuário não encontrado em NENHUMA tentativa.");
+        alert(`ERRO DE LOGIN:\n\nUsuario: ${userEmail}\nUID: ${user.uid}\n\nO sistema tentou buscar pelo ID e pelo E-mail, mas o Firebase não retornou o documento.\n\nIsso pode ser Permissão de Leitura no Banco de Dados.`);
         
         signOut(auth);
         hideApp();
