@@ -628,7 +628,7 @@ function processScheduleData() {
         const scheduleArr = rawSchedule[name].calculatedSchedule || rawSchedule[name].schedule || [];
         scheduleData[name] = {
             schedule: scheduleArr,
-            info: rawSchedule[name].info || {} // Pega infos como Cargo, Setor, etc.
+            info: rawSchedule[name].info || {}
         };
     });
 }
@@ -799,7 +799,7 @@ function renderWeekendModules(name) {
 }
 
 // -----------------------------------------------------
-// ATUALIZAÇÃO: HEADER COM INFOS COMPLETAS & DESIGN MELHORADO
+// ATUALIZAÇÃO: BUSCA DADOS EM 'COLABORADORES' E PREENCHE
 // -----------------------------------------------------
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
@@ -813,42 +813,39 @@ function renderPersonalCalendar(name) {
     
     if(!scheduleData[name]) return;
     const schedule = scheduleData[name].schedule;
-    const info = scheduleData[name].info || {}; 
-
-    // --- Dados da Base de Dados ---
-    const cargo = info.cargo || "Não informado";
-    const celula = info.celula || "Geral";
-    const turno = info.turno || "--";
-    const horario = info.horario || "--:--";
     const initials = getInitials(name);
 
     if(infoCard) {
         infoCard.classList.remove('hidden');
-        // NOVO DESIGN: Estilo "Crachá" com Avatar e Dados em Grade
+        // IDs inseridos nos campos para atualização via JS
         infoCard.innerHTML = `
-            <div class="bg-[#161828] border border-[#2E3250] rounded-xl p-5 mb-6 flex flex-col md:flex-row items-center md:items-start gap-5 shadow-lg relative overflow-hidden">
-                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+            <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
 
-                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shadow-lg text-white font-bold text-xl relative z-10 border-2 border-[#1A1C2E]">
-                    ${initials}
-                </div>
-
-                <div class="flex-1 w-full text-center md:text-left relative z-10">
-                    <h3 class="text-xl font-bold text-white mb-1">${name}</h3>
-                    <p class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4">${cargo}</p>
-
-                    <div class="grid grid-cols-3 gap-2 border-t border-[#2E3250] pt-3">
-                        <div>
-                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Célula</p>
-                            <p class="text-sm text-gray-300 font-medium">${celula}</p>
+                <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
+                    <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
+                        <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
+                            ${initials}
                         </div>
-                        <div>
-                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Turno</p>
-                            <p class="text-sm text-gray-300 font-medium">${turno}</p>
-                        </div>
-                        <div>
-                            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Horário</p>
-                            <span class="text-sm text-white font-bold bg-white/5 rounded px-2 py-0.5 inline-block border border-white/10">${horario}</span>
+                    </div>
+
+                    <div class="text-center md:text-left flex-1 w-full">
+                        <h3 class="text-xl font-bold text-white leading-tight mb-1">${name}</h3>
+                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">--</p>
+
+                        <div class="grid grid-cols-3 gap-3 w-full">
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Célula</span>
+                                <span id="badgeCelula" class="text-white font-semibold text-xs">--</span>
+                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Turno</span>
+                                <span id="badgeTurno" class="text-white font-semibold text-xs">--</span>
+                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Horário</span>
+                                <span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -856,12 +853,15 @@ function renderPersonalCalendar(name) {
             
             <div class="flex items-center gap-2 mb-3 px-1">
                 <i class="fas fa-calendar-alt text-gray-500"></i>
-                <span class="text-sm text-gray-400 font-medium">${selectedMonthObj.label}</span>
+                <span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span>
             </div>
         `;
+        
+        // CHAMA A BUSCA DE DADOS ASSÍNCRONA
+        fetchCollaboratorDetails(name);
     }
     
-    // --- LÓGICA DE ALINHAMENTO DO GRID ---
+    // Renderização do Grid (Dias)
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
 
     for (let i = 0; i < firstDayOfWeek; i++) {
@@ -893,6 +893,43 @@ function renderPersonalCalendar(name) {
     }
 
     renderWeekendModules(name);
+}
+
+// --- FUNÇÃO AUXILIAR PARA BUSCAR DADOS DO CRACHÁ EM 'COLABORADORES' ---
+async function fetchCollaboratorDetails(name) {
+    try {
+        // Tenta achar o documento onde Nome == name
+        const q = query(collection(db, "colaboradores"), where("Nome", "==", name));
+        const querySnapshot = await getDocs(q);
+        
+        let data = {};
+        
+        // Se achou pelo nome exato
+        if (!querySnapshot.empty) {
+            data = querySnapshot.docs[0].data();
+        } 
+        // Se não achou, tenta 'nome' minúsculo
+        else {
+            const q2 = query(collection(db, "colaboradores"), where("nome", "==", name));
+            const snap2 = await getDocs(q2);
+            if(!snap2.empty) data = snap2.docs[0].data();
+        }
+
+        // Atualiza a tela se encontrou algo
+        if (data) {
+            const cargo = data.Cargo || data.cargo || "Colaborador";
+            const celula = data.Celula || data.celula || "Geral";
+            const turno = data.Turno || data.turno || "--";
+            const horario = data.Horario || data.horario || "--:--";
+
+            document.getElementById('badgeCargo').textContent = cargo;
+            document.getElementById('badgeCelula').textContent = celula;
+            document.getElementById('badgeTurno').textContent = turno;
+            document.getElementById('badgeHorario').textContent = horario;
+        }
+    } catch (e) {
+        console.error("Erro ao buscar detalhes do colaborador:", e);
+    }
 }
 
 function updateChart(working, off, offShift, vacation) {
