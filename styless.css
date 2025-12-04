@@ -2,7 +2,6 @@
 
 body {
     background-color: #0F1020; /* Deep Space Background */
-    /* Textura Sutil de Circuito/Grid */
     background-image: 
         linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
@@ -88,68 +87,47 @@ body {
 @media (min-width: 768px) { .day-status-badge { margin-top: 0; } }
 
 /* Status Colors (NEON DARK MODE) */
-/* Trabalhando (Verde Neon) */
 .status-T { 
     background: rgba(16, 185, 129, 0.1); 
     color: #34D399; 
     border: 1px solid rgba(16, 185, 129, 0.3); 
     box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
 } 
-
-/* Folga (Amarelo Neon) */
 .status-F { 
     background: rgba(251, 191, 36, 0.1); 
     color: #FBBF24; 
     border: 1px solid rgba(251, 191, 36, 0.3); 
 } 
-
-/* Férias (Vermelho Neon) */
 .status-FE { 
     background: rgba(239, 68, 68, 0.15); 
     color: #F87171; 
     border: 1px solid rgba(239, 68, 68, 0.3); 
 } 
-
-/* Exp. Encerrado / Efetivo (Roxo/Rosa Neon) */
 .status-OFF-SHIFT, .status-F_EFFECTIVE { 
     background: rgba(217, 70, 239, 0.1); 
     color: #E879F9; 
     border: 1px solid rgba(217, 70, 239, 0.3); 
 }
-
-/* Folga Sabado (Azul Claro Neon) */
 .status-FS { 
     background: rgba(56, 189, 248, 0.1); 
     color: #38BDF8; 
     border: 1px solid rgba(56, 189, 248, 0.3); 
 }
-
-/* Folga Domingo (Azul Índigo Neon) */
 .status-FD { 
     background: rgba(99, 102, 241, 0.1); 
     color: #818CF8; 
     border: 1px solid rgba(99, 102, 241, 0.3); 
 }
 
-/* Range Slider Customizado */
-input[type=range] {
-    -webkit-appearance: none;
-    background: transparent; 
-}
+/* Range Slider */
+input[type=range] { -webkit-appearance: none; background: transparent; }
 input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    height: 16px;
-    width: 16px;
-    border-radius: 50%;
-    background: #D946EF;
-    box-shadow: 0 0 10px rgba(217, 70, 239, 0.8);
-    cursor: pointer;
-    margin-top: -6px; 
+    height: 16px; width: 16px; border-radius: 50%;
+    background: #D946EF; box-shadow: 0 0 10px rgba(217, 70, 239, 0.8);
+    cursor: pointer; margin-top: -6px; 
 }
 input[type=range]::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 4px;
-    cursor: pointer;
-    background: #2E3250;
-    border-radius: 2px;
+    width: 100%; height: 4px; cursor: pointer;
+    background: #2E3250; border-radius: 2px;
 }
