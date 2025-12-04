@@ -4,7 +4,7 @@
 // ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
 // ==========================================
 // 2. CONFIGURAÇÃO
@@ -38,7 +38,6 @@ const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho
 const systemYear = currentDateObj.getFullYear();
 const systemMonth = currentDateObj.getMonth(); 
 
-// Lista de meses disponíveis
 const availableMonths = [
     { year: 2025, month: 10 }, { year: 2025, month: 11 }, 
     { year: 2026, month: 0 }, { year: 2026, month: 1 }, { year: 2026, month: 2 }
@@ -58,7 +57,6 @@ const appInterface = document.getElementById('appInterface');
 function revealApp() {
     landingPage.classList.add('hidden');
     appInterface.classList.remove('hidden');
-    // Pequeno delay para animação de opacidade
     setTimeout(() => {
         appInterface.classList.remove('opacity-0');
     }, 50);
@@ -72,16 +70,28 @@ function hideApp() {
     }, 500);
 }
 
-// Auth Listener (Admin Real)
+// === AUTH LISTENER PRINCIPAL ===
 onAuthStateChanged(auth, (user) => {
     if (user) {
-        setAdminMode(true);
-        revealApp(); // Se já estiver logado, libera o app
-    } else {
-        // Se não tiver user e não tiver collab selecionado, mostra Landing
-        if(!currentUserCollab) {
-            hideApp();
+        // Se o email for admin@cronos.com (ou outro criterio), ativa modo Admin
+        if (user.email === 'admin@cronos.com') {
+            setAdminMode(true);
+            revealApp();
+        } else {
+            // Caso contrário, é um colaborador.
+            // Para demo, vamos extrair o nome do email (ex: gabriel@cronos.com -> Gabriel)
+            const nameFromEmail = user.email.split('@')[0];
+            const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+            
+            // Tenta achar o nome exato na escala (busca fuzzy simples)
+            const matchName = Object.keys(scheduleData).find(n => n.toLowerCase().includes(nameFromEmail.toLowerCase()));
+            
+            currentUserCollab = matchName || formattedName;
+            setupCollabMode(currentUserCollab);
+            revealApp();
         }
+    } else {
+        hideApp();
     }
     updateDailyView();
 });
@@ -104,78 +114,91 @@ function setAdminMode(active) {
     }
 }
 
-// Logout Admin
-const btnLogout = document.getElementById('btnLogout');
-if(btnLogout) {
-    btnLogout.addEventListener('click', () => { 
-        signOut(auth); 
-    });
+function setupCollabMode(name) {
+    isAdmin = false;
+    const adminToolbar = document.getElementById('adminToolbar');
+    const collabToolbar = document.getElementById('collabToolbar');
+    
+    adminToolbar.classList.add('hidden');
+    collabToolbar.classList.remove('hidden');
+    
+    document.getElementById('collabNameDisplay').textContent = name;
+    document.getElementById('collabEditHint').classList.remove('hidden');
+    document.getElementById('adminEditHint').classList.add('hidden');
+    document.body.style.paddingBottom = "100px";
+
+    // Auto-select na view pessoal
+    const empSelect = document.getElementById('employeeSelect');
+    if(empSelect) {
+        empSelect.value = name;
+        // Se o nome exato não estiver no select (ex: select tem "Gabriel Procopio" e email deu "Gabriel"), tenta achar parcial
+        if(empSelect.selectedIndex === -1) {
+             for (let i = 0; i < empSelect.options.length; i++) {
+                if (empSelect.options[i].text.toLowerCase().includes(name.toLowerCase())) {
+                    empSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        empSelect.dispatchEvent(new Event('change'));
+    }
+
+    // Força ir para a tab pessoal
+    const personalTab = document.querySelector('[data-tab="personal"]');
+    if(personalTab) personalTab.click();
+    
+    startRequestsListener();
 }
+
+// Logout Global
+const btnLogout = document.getElementById('btnLogout');
+if(btnLogout) btnLogout.addEventListener('click', () => signOut(auth));
 
 
 // ==========================================
-// 5. MODO COLABORADOR (SIMULADO)
+// 5. MODO COLABORADOR - LOGIN & LOGOUT
 // ==========================================
 const collabModal = document.getElementById('collabLoginModal');
 const btnLandingCollab = document.getElementById('btnLandingCollab');
 const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
 const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
-const collabSelect = document.getElementById('collabLoginSelect');
 
+// Abrir modal na landing page
 if(btnLandingCollab) {
     btnLandingCollab.addEventListener('click', () => {
-        collabSelect.innerHTML = '<option value="">Selecione seu nome...</option>';
-        Object.keys(scheduleData).sort().forEach(name => {
-            const opt = document.createElement('option');
-            opt.value = name; opt.textContent = name;
-            collabSelect.appendChild(opt);
-        });
+        document.getElementById('collabEmailInput').value = '';
+        document.getElementById('collabPassInput').value = '';
         collabModal.classList.remove('hidden');
     });
 }
 
 btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
-btnConfirmCollab.addEventListener('click', () => {
-    const name = collabSelect.value;
-    if(!name) return;
-    
-    currentUserCollab = name;
-    collabModal.classList.add('hidden');
-    
-    // UI Updates
-    const collabToolbar = document.getElementById('collabToolbar');
-    collabToolbar.classList.remove('hidden');
-    
-    document.getElementById('collabNameDisplay').textContent = name;
-    document.getElementById('collabEditHint').classList.remove('hidden');
-    document.body.style.paddingBottom = "100px";
-    
-    // Auto-select na view pessoal
-    const empSelect = document.getElementById('employeeSelect');
-    if(empSelect) {
-        empSelect.value = name;
-        empSelect.dispatchEvent(new Event('change'));
+// Ação de Login do Colaborador
+btnConfirmCollab.addEventListener('click', async () => {
+    const email = document.getElementById('collabEmailInput').value;
+    const pass = document.getElementById('collabPassInput').value;
+    const btn = btnConfirmCollab;
+
+    if(!email || !pass) return alert("Preencha todos os campos.");
+
+    try {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        await signInWithEmailAndPassword(auth, email, pass);
+        // O onAuthStateChanged vai lidar com o resto
+        collabModal.classList.add('hidden');
+    } catch (e) {
+        console.error(e);
+        alert("Erro no login: Verifique e-mail e senha.");
+    } finally {
+        btn.innerHTML = 'Entrar';
     }
-    
-    revealApp();
-    
-    // Força view pessoal
-    const personalTab = document.querySelector('[data-tab="personal"]');
-    if(personalTab) personalTab.click();
-    
-    startRequestsListener();
 });
 
+// Logout Colaborador
 document.getElementById('btnCollabLogout').addEventListener('click', () => {
-    currentUserCollab = null;
-    const collabToolbar = document.getElementById('collabToolbar');
-    collabToolbar.classList.add('hidden');
-    document.getElementById('collabEditHint').classList.add('hidden');
-    document.body.style.paddingBottom = "0";
-    
-    hideApp();
-    window.location.reload(); 
+    signOut(auth);
+    // onAuthStateChanged chamará hideApp() automaticamente
 });
 
 
@@ -252,7 +275,8 @@ function openRequestModal(dayIndex) {
     targetPeerSelect.innerHTML = '<option value="">Selecione um colega...</option>';
     
     Object.keys(scheduleData).sort().forEach(name => {
-        if(name !== currentUserCollab) {
+        // Mostra todos exceto o próprio usuário (busca parcial para garantir)
+        if(!name.toLowerCase().includes(currentUserCollab.toLowerCase())) {
             const opt = document.createElement('option');
             opt.value = name; opt.textContent = name;
             targetPeerSelect.appendChild(opt);
@@ -364,14 +388,15 @@ function startRequestsListener() {
                     count++;
                 }
             } else if (currentUserCollab) {
-                // Colaborador vê solicitações de troca para ele
-                if (req.status === 'pendente_colega' && req.target === currentUserCollab) {
+                // Colaborador vê solicitações de troca enviadas PARA ele
+                // (Busca parcial para caso o nome no select seja "Gabriel Procopio" e no request "Gabriel")
+                if (req.status === 'pendente_colega' && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = true;
                     count++;
                 }
                 // Vê status dos próprios pedidos
-                if (req.requester === currentUserCollab) {
+                if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
                     show = true;
                     canAction = false;
                 }
