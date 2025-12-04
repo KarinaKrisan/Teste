@@ -44,7 +44,8 @@ const availableMonths = [
     { label: "Março 2026", year: 2026, month: 2 }
 ];
 
-let selectedMonthObj = availableMonths.find(m => m.year === currentDateObj.getFullYear() && m.month === currentDateObj.getMonth()) || availableMonths[1];
+// Ajuste para selecionar Dezembro 2025 por padrão se estivermos perto
+let selectedMonthObj = availableMonths.find(m => m.year === 2025 && m.month === 11) || availableMonths[1];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
@@ -77,6 +78,7 @@ function resolveCollaboratorName(email) {
         if (matchKey) return matchKey;
     }
     
+    // Fallback visual
     return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -105,9 +107,8 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Verificando: ${userEmail} (UID: ${user.uid})`);
-
-        // 1. ADMIN
+        
+        // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
             const adminDoc = await getDoc(doc(db, "administradores", user.uid));
@@ -128,32 +129,22 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. COLABORADOR
+        // 2. COLLAB CHECK
         let isDatabaseCollab = false;
-        let dbName = null;
         try {
             const collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
             const qCollabLower = query(collection(db, "colaboradores"), where("email", "==", userEmail));
             const qCollabUpper = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
             const [snapCLower, snapCUpper] = await Promise.all([getDocs(qCollabLower), getDocs(qCollabUpper)]);
 
-            if (collabDoc.exists()) {
-                const data = collabDoc.data();
+            if (collabDoc.exists() || !snapCLower.empty || !snapCUpper.empty) {
                 isDatabaseCollab = true;
-                dbName = data.nome || data.Nome || data.name;
-            } else if (!snapCLower.empty) {
-                const data = snapCLower.docs[0].data();
-                isDatabaseCollab = true;
-                dbName = data.nome || data.Nome || data.name;
-            } else if (!snapCUpper.empty) {
-                const data = snapCUpper.docs[0].data();
-                isDatabaseCollab = true;
-                dbName = data.nome || data.Nome || data.name;
             }
         } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
-            const finalName = dbName || resolveCollaboratorName(user.email);
+            // Define o nome base da escala (Short Name)
+            const finalName = resolveCollaboratorName(user.email);
             currentUserCollab = finalName;
             setupCollabMode(currentUserCollab);
             revealApp();
@@ -219,6 +210,7 @@ function setupCollabMode(name) {
         empSelect.value = name;
         empSelect.disabled = true; 
         
+        // Renderiza apenas se os dados já existirem
         if (scheduleData && scheduleData[name]) {
             renderPersonalCalendar(name);
         }
@@ -339,9 +331,17 @@ async function loadDataFromCloud() {
             initSelect(); 
             
             if (!isAdmin && currentUserCollab) {
+                // Tenta resolver o nome que está na escala usando o email
                 const betterName = resolveCollaboratorName(auth.currentUser.email);
-                if(betterName) currentUserCollab = betterName;
-                setupCollabMode(currentUserCollab);
+                
+                // Se encontrou um nome na escala, atualiza
+                if(betterName && scheduleData[betterName]) {
+                    currentUserCollab = betterName;
+                    setupCollabMode(currentUserCollab);
+                } else {
+                    // Se não, usa o nome do cadastro, mas pode dar conflito na chave
+                    setupCollabMode(currentUserCollab);
+                }
             }
         } else {
             console.log("Nenhum documento encontrado.");
@@ -417,14 +417,11 @@ window.openRequestModal = function(dayIndex) {
     requestModal.classList.remove('hidden');
 }
 
-// Botões de Tipo de Solicitação
 document.querySelectorAll('.req-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        // Reset visual
         document.querySelectorAll('.req-type-btn').forEach(b => b.classList.remove('active', 'bg-purple-500/20', 'border-purple-500', 'text-white'));
         document.querySelectorAll('.req-type-btn').forEach(b => b.classList.add('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]'));
         
-        // Ativa o clicado
         btn.classList.remove('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]');
         btn.classList.add('active', 'bg-purple-500/20', 'border-purple-500', 'text-white');
         
@@ -603,10 +600,11 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
         
         if (type === 'mudanca_turno') {
             try {
+                // Lógica de atualização automática
                 const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
                 const snap = await getDocs(q);
                 if (!snap.empty) {
-                    await updateDoc(snap.docs[0].ref, { Turno: newDetail });
+                    await updateDoc(snap.docs[0].ref, { turno: newDetail }); // Atualiza 'turno' minúsculo
                 } else {
                     const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
                     const snap2 = await getDocs(q2);
@@ -614,7 +612,6 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
                 }
             } catch(e) { console.error(e); }
         } else {
-            // Troca de Folga OU Troca de Dia (ambos mexem na escala)
             const reqSnap = await getDoc(doc(db, "requests", id));
             applyScheduleChange(reqSnap.data());
             await saveToCloud();
@@ -724,7 +721,7 @@ function renderPersonalCalendar(name) {
             </div>
         `;
         
-        fetchCollaboratorDetails(name);
+        fetchCollaboratorDetails(name); // CHAMA A BUSCA POR EMAIL OU NOME
     }
     
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
@@ -760,29 +757,47 @@ function renderPersonalCalendar(name) {
     renderWeekendModules(name);
 }
 
-// --- BUSCA DADOS FLEXÍVEL (Com Acento e Sem Acento) ---
+// --- BUSCA DADOS CRÍTICA (CORRIGIDA PARA EMAIL) ---
 async function fetchCollaboratorDetails(name) {
     try {
-        const q = query(collection(db, "colaboradores"), where("Nome", "==", name));
-        const querySnapshot = await getDocs(q);
+        // TENTA BUSCAR PELO EMAIL DO USUÁRIO LOGADO (SE FOR O PRÓPRIO)
+        let data = null;
         
-        let data = {};
-        if (!querySnapshot.empty) {
-            data = querySnapshot.docs[0].data();
-        } else {
-            const q2 = query(collection(db, "colaboradores"), where("nome", "==", name));
-            const snap2 = await getDocs(q2);
-            if(!snap2.empty) data = snap2.docs[0].data();
+        if (!isAdmin && auth.currentUser) {
+            const userEmail = auth.currentUser.email;
+            
+            // Busca por 'email' (minúsculo)
+            const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
+            const s1 = await getDocs(q1);
+            if(!s1.empty) data = s1.docs[0].data();
+            
+            // Busca por 'Email' (Maiúsculo) se não achou
+            if(!data) {
+                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
+                const s2 = await getDocs(q2);
+                if(!s2.empty) data = s2.docs[0].data();
+            }
+        }
+
+        // SE NÃO FOR O PRÓPRIO OU NÃO ACHOU POR EMAIL, BUSCA PELO NOME (FALLBACK)
+        if (!data) {
+            const q3 = query(collection(db, "colaboradores"), where("nome", "==", name)); // minúsculo
+            const s3 = await getDocs(q3);
+            if(!s3.empty) {
+                data = s3.docs[0].data();
+            } else {
+                const q4 = query(collection(db, "colaboradores"), where("Nome", "==", name)); // Maiúsculo
+                const s4 = await getDocs(q4);
+                if(!s4.empty) data = s4.docs[0].data();
+            }
         }
 
         if (data) {
-            // Tenta todas as variações de escrita do banco (com e sem acento)
-            const cargo = data.Cargo || data.cargo || "Colaborador";
-            // Tenta 'Célula' (com acento), 'célula', 'Celula', 'celula'
-            const celula = data.Célula || data.célula || data.Celula || data.celula || "Geral";
-            const turno = data.Turno || data.turno || "--";
-            // Tenta 'Horário' (com acento), 'horário', 'Horario', 'horario'
-            const horario = data.Horário || data.horário || data.Horario || data.horario || "--:--";
+            // Mapeamento flexível para os campos do banco
+            const cargo = data.cargo || data.Cargo || "Colaborador";
+            const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral"; // Trata acento
+            const turno = data.turno || data.Turno || "--";
+            const horario = data.horario || data.Horario || "--:--";
 
             document.getElementById('badgeCargo').textContent = cargo;
             document.getElementById('badgeCelula').textContent = celula;
