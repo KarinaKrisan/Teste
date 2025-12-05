@@ -45,7 +45,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     try {
-        // 1. Check Admin (Coleção administradores)
+        // 1. Check Admin
         const adminRef = doc(db, "administradores", user.uid);
         const adminSnap = await getDoc(adminRef);
 
@@ -55,23 +55,20 @@ onAuthStateChanged(auth, async (user) => {
             setupAdminUI();
             initNotificationsListener('admin');
         } else {
-            // 2. Check Colaborador (Coleção colaboradores)
+            // 2. Check Colaborador
             const collabRef = doc(db, "colaboradores", user.uid);
             const collabSnap = await getDoc(collabRef);
             
             if(collabSnap.exists()) {
                 isAdmin = false;
-                currentUserName = collabSnap.data().name; // Nome exato da escala
+                currentUserName = collabSnap.data().name; 
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
-            } else {
-                console.error("Usuário sem perfil definido.");
             }
         }
         notificationWrapper.classList.remove('hidden');
     } catch (e) { console.error(e); } 
     finally { 
-        // Carrega os dados após definir quem é o usuário
         loadDataFromCloud(); 
     }
 });
@@ -92,15 +89,13 @@ function setupCollaboratorUI(name) {
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
 
-    // Esconde a aba diária e o seletor
     document.getElementById('tabDaily').classList.add('hidden');
     document.getElementById('employeeSelectContainer').classList.add('hidden');
 
-    // Força a aba pessoal
     switchTab('personal');
 }
 
-// --- DATA LOGIC ---
+// --- DATA ---
 async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     try {
@@ -109,12 +104,10 @@ async function loadDataFromCloud() {
         rawSchedule = docSnap.exists() ? docSnap.data() : {};
         processScheduleData(); 
         
-        // ATUALIZAÇÃO DA TELA
         if(isAdmin) {
             updateDailyView();
             initSelect();
         } else if (currentUserName) {
-            // Se for colaborador, carrega a escala dele IMEDIATAMENTE
             updatePersonalView(currentUserName);
         }
 
@@ -149,7 +142,7 @@ function switchTab(tabName) {
 
 document.querySelectorAll('.tab-button').forEach(b => {
     b.addEventListener('click', () => {
-        if(!isAdmin && b.dataset.tab === 'daily') return; // Bloqueia clique
+        if(!isAdmin && b.dataset.tab === 'daily') return;
         switchTab(b.dataset.tab);
     });
 });
@@ -184,7 +177,6 @@ function updatePersonalView(name) {
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
     
-    // Atualiza Weekend
     updateWeekendTable(name);
 }
 
@@ -201,10 +193,6 @@ function updateCalendar(name, schedule) {
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     container.innerHTML = '';
-    // Lógica simplificada: mostra apenas fins de semana do usuário alvo
-    if(!scheduleData[targetName]) return;
-    
-    // ... (Lógica de plantão pode ser expandida aqui, se necessário)
 }
 
 // --- INTERACTION ---
@@ -224,7 +212,6 @@ window.handleCellClick = function(name, dayIndex) {
 }
 
 function openRequestModal(name, dayIndex) {
-    // Validação extra
     if(currentUserName && name !== currentUserName) { alert("Apenas sua escala."); return; }
     
     const d = new Date(selectedMonthObj.year, selectedMonthObj.month, dayIndex + 1);
@@ -232,22 +219,33 @@ function openRequestModal(name, dayIndex) {
     document.getElementById('reqDateIndex').value = dayIndex;
     document.getElementById('reqEmployeeName').value = name;
     
-    // Dropdown Colegas
     const targetSel = document.getElementById('reqTargetEmployee');
     targetSel.innerHTML = '<option value="">Selecione o colega...</option>';
     Object.keys(scheduleData).sort().forEach(n => {
         if(n !== name) targetSel.innerHTML += `<option value="${n}">${n}</option>`;
     });
 
+    // Reset default visuals
+    document.getElementById('reqType').value = 'troca_dia_trabalho';
+    document.getElementById('swapTargetContainer').classList.remove('hidden');
+
     document.getElementById('requestModal').classList.remove('hidden');
 }
 
+// VISIBILIDADE CAMPO ALVO
 document.getElementById('reqType').addEventListener('change', (e) => {
+    const val = e.target.value;
     const swapContainer = document.getElementById('swapTargetContainer');
-    if(e.target.value === 'troca_folga') swapContainer.classList.remove('hidden');
-    else swapContainer.classList.add('hidden');
+    
+    // Mostra o campo se for troca de folga ou troca de dia de trabalho
+    if(val === 'troca_folga' || val === 'troca_dia_trabalho') {
+        swapContainer.classList.remove('hidden');
+    } else {
+        swapContainer.classList.add('hidden');
+    }
 });
 
+// ENVIO DE SOLICITAÇÃO
 document.getElementById('btnSendRequest').addEventListener('click', async () => {
     const btn = document.getElementById('btnSendRequest');
     const type = document.getElementById('reqType').value;
@@ -256,13 +254,16 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     const idx = parseInt(document.getElementById('reqDateIndex').value);
     const reason = document.getElementById('reqReason').value;
 
-    if(type === 'troca_folga' && !targetEmp) { alert("Selecione o colega."); return; }
+    const needsPeer = (type === 'troca_folga' || type === 'troca_dia_trabalho');
+
+    if(needsPeer && !targetEmp) { alert("Selecione o colega."); return; }
     if(!reason) { alert("Informe o motivo."); return; }
 
-    btn.innerHTML = '...'; btn.disabled = true;
+    btn.innerHTML = 'Enviando...'; btn.disabled = true;
 
     try {
-        const initialStatus = (type === 'troca_folga') ? 'pending_peer' : 'pending_leader';
+        const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
+        
         await addDoc(collection(db, "solicitacoes"), {
             monthId: `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`,
             requester: name,
@@ -279,7 +280,7 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     finally { btn.innerHTML = 'Enviar'; btn.disabled = false; }
 });
 
-// --- NOTIFICATIONS & REQUESTS HANDLING ---
+// --- NOTIFICATIONS ---
 let notifUnsubscribe = null;
 function initNotificationsListener(role) {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
@@ -307,10 +308,17 @@ function initNotificationsListener(role) {
 
         if(count === 0) { list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>'; return; }
 
+        const labels = {
+            'troca_folga': 'Troca de Folga',
+            'troca_dia_trabalho': 'Troca de Dia Trabalhado',
+            'troca_turno': 'Troca de Turno',
+            'justificativa': 'Justificativa'
+        };
+
         snapshot.forEach(docSnap => {
             const req = docSnap.data();
             const dateStr = `${pad(req.dayIndex+1)}/${pad(selectedMonthObj.month+1)}`;
-            const isSwap = req.type === 'troca_folga';
+            const label = labels[req.type] || req.type;
             
             const div = document.createElement('div');
             div.className = "bg-[#0F1020] border border-cronos-border p-3 rounded-lg mb-2";
@@ -318,7 +326,7 @@ function initNotificationsListener(role) {
             let html = `
                 <div class="mb-2">
                     <span class="text-sky-400 font-bold text-xs uppercase">${req.requester}</span>
-                    <div class="text-[10px] text-gray-400">Dia ${dateStr} • ${isSwap ? 'Troca com você' : 'Troca de Turno'}</div>
+                    <div class="text-[10px] text-gray-400">Dia ${dateStr} • ${label}</div>
                 </div>
                 <p class="text-xs text-gray-300 italic bg-[#1A1C2E] p-2 rounded mb-2">"${req.reason}"</p>
             `;
@@ -346,7 +354,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             await updateDoc(reqRef, { status: 'approved' });
             
             if (targetName) {
-                // Swap logic
+                // Swap logic (works for both Folga and Dia Trabalhado)
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = targetStatus;
@@ -354,7 +362,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
                 rawSchedule[targetName].calculatedSchedule = scheduleData[targetName].schedule;
             } else {
-                // Simple toggle
+                // Simple toggle for Shift Change
                 const curr = scheduleData[requesterName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T';
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
