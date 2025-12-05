@@ -22,7 +22,7 @@
                     },
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
                     animation: {
-                        'fade-in': 'fadeIn 0.5s ease-out forwards',
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
                     },
                     keyframes: {
                         fadeIn: {
@@ -35,14 +35,7 @@
         }
     </script>
     <style>
-        body { 
-            background-color: #0F1020; 
-            color: #E2E8F0;
-            background-image: 
-                linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-            background-size: 40px 40px;
-        }
+        body { background-color: #0F1020; color: #E2E8F0; }
         .login-input {
             background-color: #0F1020;
             border-color: #2E3250;
@@ -70,36 +63,32 @@
 </head>
 <body class="h-screen flex items-center justify-center p-4 relative overflow-hidden">
     
-    <!-- Background Effects -->
     <div class="absolute top-0 left-0 w-full h-full pointer-events-none z-0">
-        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-900/20 rounded-full blur-[80px]"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-orange-900/20 rounded-full blur-[80px]"></div>
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-900/20 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-orange-900/20 rounded-full blur-3xl"></div>
     </div>
 
-    <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 backdrop-blur-sm animate-fade-in">
+    <div class="bg-cronos-card border border-cronos-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 backdrop-blur-sm">
         
         <div class="w-full p-8 md:p-10">
             <div class="text-center mb-10">
-                <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-orange-500 mb-4 shadow-lg shadow-purple-900/30">
-                     <i class="fas fa-shield-alt text-white text-xl"></i>
-                </div>
-                <h1 class="text-3xl font-extrabold mb-2 text-white">Acesso Admin</h1>
-                <p class="text-sm text-gray-400 font-medium tracking-wide">Gerencie sua operação Cronos.</p>
+                <h1 class="text-4xl font-extrabold mb-2 text-gradient">CRONOS</h1>
+                <p class="text-sm text-gray-400 font-medium tracking-wide">Sua operação no tempo certo.</p>
             </div>
 
             <form id="loginPageForm" class="space-y-6">
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">E-mail Corporativo</label>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">E-mail Corporativo</label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <i class="fas fa-envelope text-gray-500"></i>
                         </div>
-                        <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="admin@cronos.com" required>
+                        <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="nome@exemplo.com" required>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Senha</label>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Senha</label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <i class="fas fa-lock text-gray-500"></i>
@@ -118,21 +107,20 @@
                     <span id="errorText">Erro de autenticação.</span>
                 </div>
 
-                <button type="submit" id="btnLogin" class="w-full btn-gradient text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-2 group">
+                <button type="submit" id="btnLogin" class="w-full btn-gradient text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-2">
                     <span>Entrar no Painel</span>
-                    <i class="fas fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                    <i class="fas fa-arrow-right"></i>
                 </button>
             </form>
 
-            <div class="mt-8 text-center border-t border-[#2E3250] pt-6">
-                <a href="index.html" class="text-sm text-gray-500 hover:text-white font-medium transition-colors flex items-center justify-center gap-2">
-                    <i class="fas fa-arrow-left"></i> Voltar para Início
+            <div class="mt-8 text-center border-t border-gray-800 pt-6">
+                <a href="index.html" class="text-sm text-gray-500 hover:text-purple-400 font-medium transition-colors">
+                    <i class="fas fa-arrow-left mr-1"></i> Voltar para Visão Diária
                 </a>
             </div>
         </div>
     </div>
 
-    <!-- Modal Reset Senha -->
     <div id="resetModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 transition-opacity duration-300">
         <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl shadow-2xl w-full max-w-sm p-6 relative animate-fade-in" onclick="event.stopPropagation()">
             
@@ -141,7 +129,7 @@
                     <i class="fas fa-key"></i>
                 </div>
                 <h3 class="text-xl font-bold text-white">Recuperar Senha</h3>
-                <p class="text-xs text-gray-400 mt-1">Digite seu e-mail para receber o link.</p>
+                <p class="text-xs text-gray-400 mt-1">Digite seu e-mail para receber o link de redefinição.</p>
             </div>
 
             <form id="resetForm" class="space-y-4">
@@ -197,7 +185,6 @@
 
             try {
                 await signInWithEmailAndPassword(auth, email, pass);
-                // Redireciona para o index. O app.js de lá vai reconhecer o login.
                 window.location.href = "index.html";
             } catch (error) {
                 console.error("Erro login:", error);
@@ -224,19 +211,28 @@
         const resetFeedback = document.getElementById('resetFeedback');
         const resetBtnSend = document.getElementById('btnResetSend');
 
+        // Abrir Modal
         btnOpen.addEventListener('click', () => {
+            // Força o campo a ficar vazio sempre que abrir
             document.getElementById('resetEmailInput').value = ""; 
+            
             resetFeedback.classList.add('hidden');
             modal.classList.remove('hidden');
         });
 
+        // Fechar Modal
         const closeModal = () => {
             modal.classList.add('hidden');
             resetFeedback.classList.add('hidden');
         };
         btnCancel.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => { if(e.target === modal) closeModal(); });
+        
+        // Fechar se clicar fora do card
+        modal.addEventListener('click', (e) => {
+            if(e.target === modal) closeModal();
+        });
 
+        // Enviar Email de Reset
         resetForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('resetEmailInput').value;
@@ -247,13 +243,33 @@
 
             try {
                 await sendPasswordResetEmail(auth, email);
+                
+                // Sucesso UI
                 resetFeedback.className = "text-xs p-3 rounded-lg border border-green-500/30 bg-green-900/20 text-green-400 block";
-                resetFeedback.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Enviado! Verifique o e-mail.';
-                resetBtnSend.innerHTML = 'Sucesso';
-                setTimeout(() => { closeModal(); resetBtnSend.innerHTML = 'Enviar'; resetBtnSend.disabled = false; }, 3000);
+                resetFeedback.innerHTML = '<i class="fas fa-check-circle mr-1"></i> E-mail enviado! Verifique sua caixa de entrada.';
+                
+                resetBtnSend.innerHTML = 'Enviado';
+                
+                setTimeout(() => {
+                    closeModal();
+                    resetBtnSend.innerHTML = 'Enviar';
+                    resetBtnSend.disabled = false;
+                }, 5000);
+
             } catch (error) {
+                console.error("Erro reset:", error);
+                
+                // Erro UI
                 resetFeedback.className = "text-xs p-3 rounded-lg border border-red-500/30 bg-red-900/20 text-red-400 block";
-                resetFeedback.innerHTML = '<i class="fas fa-times-circle mr-1"></i> Erro ao enviar. Verifique o e-mail.';
+                
+                if (error.code === 'auth/user-not-found') {
+                    resetFeedback.innerHTML = '<i class="fas fa-times-circle mr-1"></i> E-mail não cadastrado.';
+                } else if (error.code === 'auth/invalid-email') {
+                    resetFeedback.innerHTML = '<i class="fas fa-times-circle mr-1"></i> E-mail inválido.';
+                } else {
+                    resetFeedback.innerHTML = '<i class="fas fa-times-circle mr-1"></i> Erro ao enviar. Tente novamente.';
+                }
+
                 resetBtnSend.innerHTML = 'Enviar';
                 resetBtnSend.disabled = false;
             }
