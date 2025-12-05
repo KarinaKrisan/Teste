@@ -33,7 +33,6 @@ let dailyChart = null;
 let currentDay = new Date().getDate();
 let currentUserDbName = null;
 
-// Data System
 const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -103,9 +102,7 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Logado: ${userEmail}`);
-
-        // 1. ADMIN CHECK
+        
         let isDatabaseAdmin = false;
         try {
             const q1 = query(collection(db, "administradores"), where("email", "==", userEmail));
@@ -126,7 +123,6 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. COLLAB CHECK
         let isDatabaseCollab = false;
         try {
             const docRef = doc(db, "colaboradores", user.uid);
@@ -171,7 +167,6 @@ function setAdminMode(active) {
     isAdmin = active;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
     
     if(active) {
         if(adminToolbar) adminToolbar.classList.remove('hidden');
@@ -179,7 +174,6 @@ function setAdminMode(active) {
         document.getElementById('adminEditHint')?.classList.remove('hidden');
         document.getElementById('collabEditHint')?.classList.add('hidden');
         document.body.style.paddingBottom = "100px";
-        if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
         startRequestsListener();
     } else {
         if(adminToolbar) adminToolbar.classList.add('hidden');
@@ -191,19 +185,16 @@ function setupCollabMode(name) {
     isAdmin = false;
     const adminToolbar = document.getElementById('adminToolbar');
     const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
-    
+    const display = document.getElementById('collabNameDisplay');
+
     if(adminToolbar) adminToolbar.classList.add('hidden');
     if(collabToolbar) collabToolbar.classList.remove('hidden');
     
-    const display = document.getElementById('collabNameDisplay');
     if(display) display.textContent = name || "Carregando...";
     
     document.getElementById('collabEditHint')?.classList.remove('hidden');
     document.getElementById('adminEditHint')?.classList.add('hidden');
     document.body.style.paddingBottom = "100px";
-
-    if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
     if (name) {
         const empSelect = document.getElementById('employeeSelect');
@@ -352,15 +343,16 @@ async function loadDataFromCloud() {
                     if(currentUserDbName) renderBadgeOnly(currentUserDbName);
                 }
             } 
-            // LÓGICA ADMIN: Esconde elementos até seleção
+            // ADMIN: Renderiza TODOS os fins de semana automaticamente
             else if (isAdmin) {
                 const calContainer = document.getElementById('calendarContainer');
                 const infoCard = document.getElementById('personalInfoCard');
-                const weekendContainer = document.getElementById('weekendPlantaoContainer');
                 
                 if(calContainer) calContainer.classList.add('hidden');
                 if(infoCard) infoCard.classList.add('hidden');
-                if(weekendContainer) weekendContainer.innerHTML = '';
+                
+                // RENDERIZAÇÃO ESPECIAL PARA ADMIN
+                renderAllWeekends(); 
             }
         } else {
             console.log("Sem escala.");
@@ -369,7 +361,6 @@ async function loadDataFromCloud() {
             processScheduleData(); 
             updateDailyView();
             initSelect();
-            
             if (isAdmin) {
                 const calContainer = document.getElementById('calendarContainer');
                 if(calContainer) calContainer.innerHTML = '';
@@ -415,6 +406,7 @@ document.getElementById('btnSaveCloud')?.addEventListener('click', saveToCloud);
 // ==========================================
 // 7. LÓGICA DE SOLICITAÇÕES
 // ==========================================
+// ... (Mantida igual, para economizar espaço se necessário, mas inclusa no contexto completo)
 const requestModal = document.getElementById('requestModal');
 const btnCloseReq = document.getElementById('btnCloseRequestModal');
 const btnSubmitReq = document.getElementById('btnSubmitRequest');
@@ -515,9 +507,6 @@ if(btnSubmitReq) {
     };
 }
 
-// ==========================================
-// 8. NOTIFICAÇÕES
-// ==========================================
 const drawer = document.getElementById('notificationDrawer');
 const list = document.getElementById('notificationList');
 
@@ -527,54 +516,38 @@ document.getElementById('btnCloseDrawer')?.addEventListener('click', () => drawe
 
 function startRequestsListener() {
     const q = query(collection(db, "requests"), where("monthYear", "==", `${selectedMonthObj.year}-${selectedMonthObj.month}`));
-    
     onSnapshot(q, (snapshot) => {
         if(!list) return;
         list.innerHTML = '';
-        
         snapshot.forEach(docSnap => {
             const req = docSnap.data();
             const rid = docSnap.id;
             let show = false;
             let canAction = false;
-            
-            if (isAdmin) {
-                if (req.status === 'pendente_lider') { show = true; canAction = true; }
-            } else if (currentUserCollab) {
-                if (req.status === 'pendente_colega' && req.target && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
-                    show = true; canAction = true;
-                }
-                if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
-                    show = true; canAction = false;
-                }
+            if (isAdmin) { if (req.status === 'pendente_lider') { show = true; canAction = true; } } 
+            else if (currentUserCollab) {
+                if (req.status === 'pendente_colega' && req.target && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) { show = true; canAction = true; }
+                if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) { show = true; canAction = false; }
             }
-
             if (show) renderRequestItem(rid, req, canAction);
         });
-
-        if(list.children.length === 0) {
-            list.innerHTML = `<div class="text-center mt-10 text-gray-500"><i class="fas fa-check-circle text-4xl mb-3 opacity-20"></i><p class="text-sm">Nada pendente.</p></div>`;
-        }
+        if(list.children.length === 0) list.innerHTML = `<div class="text-center mt-10 text-gray-500"><i class="fas fa-check-circle text-4xl mb-3 opacity-20"></i><p class="text-sm">Nada pendente.</p></div>`;
     });
 }
 
 function renderRequestItem(id, req, canAction) {
     let statusColor = 'gray';
     let statusText = 'Pendente';
-    
     if (req.status === 'pendente_colega') { statusColor = 'orange'; statusText = `Aguardando ${req.target}`; }
     else if (req.status === 'pendente_lider') { statusColor = 'purple'; statusText = 'Aprovação do Líder'; }
     else if (req.status === 'aprovado') { statusColor = 'green'; statusText = 'Aprovado'; }
     else if (req.status === 'rejeitado') { statusColor = 'red'; statusText = 'Rejeitado'; }
-
     const item = document.createElement('div');
     item.className = "bg-[#0F1020] p-4 rounded-xl border border-[#2E3250] shadow-sm relative overflow-hidden";
-    
     let actionButtons = '';
     if (canAction) {
         let btnText = isAdmin ? 'Aprovar' : 'Concordo';
         if (isAdmin) btnText = 'Aprovar';
-        
         actionButtons = `
             <div class="flex gap-2 mt-3">
                 <button onclick="window.rejectRequest('${id}')" class="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-400 py-2 rounded text-xs font-bold border border-red-500/30">Recusar</button>
@@ -582,7 +555,6 @@ function renderRequestItem(id, req, canAction) {
             </div>
         `;
     }
-
     item.innerHTML = `
         <div class="flex justify-between items-start mb-2">
             <span class="text-xs font-bold text-${statusColor}-400 border border-${statusColor}-500/30 bg-${statusColor}-500/10 px-2 py-0.5 rounded uppercase">${statusText}</span>
@@ -593,7 +565,6 @@ function renderRequestItem(id, req, canAction) {
         </p>
         ${actionButtons}
     `;
-    
     list.appendChild(item);
 }
 
@@ -609,14 +580,12 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
     }
     else if (currentStatus === 'pendente_lider' && isAdmin) {
         if(!confirm("Aprovar?")) return;
-        
         if (type === 'mudanca_turno') {
             try {
                 const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
                 const snap = await getDocs(q);
-                if (!snap.empty) {
-                    await updateDoc(snap.docs[0].ref, { Turno: newDetail });
-                } else {
+                if (!snap.empty) { await updateDoc(snap.docs[0].ref, { Turno: newDetail }); } 
+                else {
                     const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
                     const snap2 = await getDocs(q2);
                     if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
@@ -627,7 +596,6 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
             applyScheduleChange(reqSnap.data());
             await saveToCloud();
         }
-
         await updateDoc(doc(db, "requests", id), { status: 'aprovado' });
         alert("Aprovado!");
     }
@@ -638,10 +606,8 @@ function applyScheduleChange(req) {
     if (req.type === 'troca_folga' || req.type === 'troca_dia') {
         const statusA = rawSchedule[req.requester].calculatedSchedule[idx];
         const statusB = rawSchedule[req.target].calculatedSchedule[idx];
-        
         rawSchedule[req.requester].calculatedSchedule[idx] = statusB;
         rawSchedule[req.target].calculatedSchedule[idx] = statusA;
-        
         scheduleData[req.requester].schedule[idx] = statusB;
         scheduleData[req.target].schedule[idx] = statusA;
     }
@@ -702,40 +668,24 @@ function renderPersonalCalendar(name) {
         infoCard.innerHTML = `
             <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
                 <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
-
                 <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
                     <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
                         <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
                             ${initials}
                         </div>
                     </div>
-
                     <div class="text-center md:text-left flex-1 w-full">
                         <h3 class="text-xl font-bold text-white leading-tight mb-1">${name}</h3>
                         <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">--</p>
-
                         <div class="grid grid-cols-3 gap-3 w-full">
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Célula</span>
-                                <span id="badgeCelula" class="text-white font-semibold text-xs">--</span>
-                            </div>
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Turno</span>
-                                <span id="badgeTurno" class="text-white font-semibold text-xs">--</span>
-                            </div>
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Horário</span>
-                                <span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span>
-                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Célula</span><span id="badgeCelula" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Turno</span><span id="badgeTurno" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Horário</span><span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span></div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="flex items-center gap-2 mb-3 px-1">
-                <i class="fas fa-calendar-alt text-gray-500"></i>
-                <span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span>
-            </div>
+            <div class="flex items-center gap-2 mb-3 px-1"><i class="fas fa-calendar-alt text-gray-500"></i><span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span></div>
         `;
         
         if(!isAdmin && auth.currentUser) fetchCollaboratorDetails();
@@ -763,8 +713,14 @@ function renderPersonalCalendar(name) {
 
         cell.innerHTML = `<div class="day-number">${dayNum}</div><div class="${badgeClass}">${status}</div>`;
         cell.addEventListener('click', () => {
-            if(isAdmin) toggleDayStatus(name, i);
-            else if(currentUserCollab === name) openRequestModal(i);
+            if(isAdmin) {
+                 let nxt = 'T';
+                 if(status==='T') nxt='F'; else if(status==='F') nxt='FE';
+                 rawSchedule[name].calculatedSchedule[i] = nxt;
+                 scheduleData[name].schedule[i] = nxt;
+                 renderPersonalCalendar(name);
+                 document.getElementById('saveStatus').textContent = "Alterado*";
+            } else if(currentUserCollab === name) openRequestModal(i);
         });
         grid.appendChild(cell);
     }
@@ -859,7 +815,6 @@ function updateDailyView() {
     updateChart(cWorking, cOff, cOffShift, cVacation);
 }
 
-// *** ATUALIZAÇÃO: ADMIN COMEÇA SEM SELEÇÃO ***
 function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
@@ -871,7 +826,6 @@ function initSelect() {
         defaultOpt.value = "";
         defaultOpt.textContent = "Selecione um colaborador";
         defaultOpt.selected = true;
-        // defaultOpt.disabled = true; // Descomente se quiser obrigar seleção
         select.appendChild(defaultOpt);
 
         Object.keys(scheduleData).sort().forEach(name => {
@@ -884,7 +838,6 @@ function initSelect() {
                 renderPersonalCalendar(e.target.value);
                 document.getElementById('calendarContainer').classList.remove('hidden');
             } else {
-                // Se selecionar vazio de novo, limpa
                 document.getElementById('calendarContainer').classList.add('hidden');
                 document.getElementById('personalInfoCard').classList.add('hidden');
                 document.getElementById('weekendPlantaoContainer').innerHTML = '';
@@ -938,6 +891,66 @@ function renderWeekendModules(name) {
     });
 
     if(!hasWeekend) container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500 border border-dashed border-gray-700 rounded-xl">Folga no FDS</div>`;
+}
+
+// --- RENDERIZAÇÃO ESPECIAL PARA ADMIN: TODOS OS FINS DE SEMANA ---
+function renderAllWeekends() {
+    const container = document.getElementById('weekendPlantaoContainer');
+    if(!container) return;
+    container.innerHTML = '';
+    
+    // Varre todos os dias do mês
+    // Para simplificar, assumimos 31 dias como teto (loop seguro)
+    const daysInMonth = new Date(selectedMonthObj.year, selectedMonthObj.month + 1, 0).getDate();
+    let hasAnyWeekend = false;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
+        const dw = date.getDay();
+
+        // Se é Sábado (6) ou Domingo (0)
+        if (dw === 0 || dw === 6) {
+            hasAnyWeekend = true;
+            const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
+            const dayName = dw === 0 ? 'Domingo' : 'Sábado';
+            
+            // Descobre quem trabalha neste dia
+            const workers = [];
+            Object.keys(scheduleData).forEach(name => {
+                const status = scheduleData[name].schedule[day - 1]; // array é base 0
+                if (status === 'T') {
+                    workers.push(name);
+                }
+            });
+
+            // Se ninguém trabalha, ignora ou mostra vazio (opcional)
+            if (workers.length === 0) continue;
+
+            let workersHtml = `<div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2">`;
+            workers.forEach(w => {
+                workersHtml += `<span class="bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-[10px] font-bold border border-orange-500/30">${w}</span>`;
+            });
+            workersHtml += `</div>`;
+
+            const card = document.createElement('div');
+            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden group mb-4";
+            card.innerHTML = `
+                <div class="flex justify-between items-center relative z-10">
+                    <div>
+                        <p class="text-orange-400 text-[10px] font-bold uppercase">${dayName}</p>
+                        <p class="text-white font-mono text-2xl font-bold">${dateStr}</p>
+                    </div>
+                    <span class="bg-orange-500/20 text-orange-400 px-3 py-1 rounded-lg text-xs font-bold border border-orange-500/30">${workers.length} Escalados</span>
+                </div>
+                ${workersHtml}
+            `;
+            container.appendChild(card);
+        }
+    }
+
+    if (!hasAnyWeekend) {
+        container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500 border border-dashed border-gray-700 rounded-xl">Sem plantões registrados.</div>`;
+    }
 }
 
 function initGlobal() {
