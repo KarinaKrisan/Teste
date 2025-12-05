@@ -15,10 +15,10 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado
+// Estado Global
 let isAdmin = false;
 let currentUserName = null;
-let currentUserProfile = null; // Armazena dados completos do DB (cargo, turno, etc)
+let currentUserProfile = null; // Armazena dados completos do DB
 let scheduleData = {}; 
 let rawSchedule = {};
 let currentDay = new Date().getDate();
@@ -60,10 +60,8 @@ onAuthStateChanged(auth, async (user) => {
             
             if(collabSnap.exists()) {
                 isAdmin = false;
-                // Salva o perfil completo do banco de dados
-                currentUserProfile = collabSnap.data(); 
+                currentUserProfile = collabSnap.data(); // Salva perfil completo na memória
                 currentUserName = currentUserProfile.name;
-                
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
             }
@@ -165,32 +163,40 @@ function updateDailyView() {
     document.getElementById('listWorking').innerHTML=lists.w; document.getElementById('listOff').innerHTML=lists.o;
 }
 
-// === NOVO DESIGN CRACHÁ ===
+// === LÓGICA ROBUSTA PARA O CRACHÁ ===
 function updatePersonalView(name) {
     if(!name || !scheduleData[name]) return;
     
-    // Prioriza dados do currentUserProfile se for o próprio usuário, senão tenta pegar da escala
-    let role = 'Colaborador';
-    let cell = '--';
-    let shift = '--';
-    let hours = '--';
+    // Função auxiliar para tentar pegar dados com diferentes nomes de chave (Célula, Celula, celula, etc)
+    const getField = (source, keys) => {
+        if (!source) return null;
+        for (const k of keys) {
+            if (source[k] !== undefined && source[k] !== null && source[k] !== "") return source[k];
+        }
+        return null;
+    };
 
-    if (currentUserProfile && name === currentUserProfile.name) {
-        // Puxa do DB 'colaboradores'
-        role = currentUserProfile.cargo || role;
-        cell = currentUserProfile.celula || cell;
-        shift = currentUserProfile.turno || shift;
-        hours = currentUserProfile.horario || hours;
-    } else if (scheduleData[name].info) {
-        // Fallback: Puxa do DB 'escalas' (caso Admin esteja vendo)
-        role = scheduleData[name].info.Cargo || role;
-        cell = scheduleData[name].info.Celula || scheduleData[name].info.Célula || cell;
-        shift = scheduleData[name].info.Turno || shift;
-        hours = scheduleData[name].info.Horário || hours;
-    }
+    const infoEscala = scheduleData[name].info || {};
+    const infoProfile = (currentUserProfile && currentUserProfile.name === name) ? currentUserProfile : {};
+
+    // Tenta pegar do Perfil (DB Colaboradores) primeiro, depois da Escala (DB Escalas)
+    // Listamos todas as variações possíveis de nomes de campos
+    const role = getField(infoProfile, ['cargo', 'Cargo', 'role']) || 
+                 getField(infoEscala, ['cargo', 'Cargo']) || 'Colaborador';
+
+    const cell = getField(infoProfile, ['celula', 'Celula', 'Célula', 'unit', 'setor']) || 
+                 getField(infoEscala, ['celula', 'Celula', 'Célula', 'unit']) || '--';
+
+    const shift = getField(infoProfile, ['turno', 'Turno', 'shift']) || 
+                  getField(infoEscala, ['turno', 'Turno']) || '--';
+
+    const hours = getField(infoProfile, ['horario', 'Horario', 'Horário', 'hours']) || 
+                  getField(infoEscala, ['horario', 'Horario', 'Horário']) || '--';
 
     const badgeHTML = `
-        <div class="badge-card rounded-2xl shadow-2xl p-0">
+        <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
+            
             <div class="p-6">
                 <div class="flex items-center gap-5">
                     <div class="flex-shrink-0 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center">
@@ -204,16 +210,16 @@ function updatePersonalView(name) {
                 
                 <div class="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/5">
                     <div class="text-center md:text-left">
-                        <p class="badge-label">Célula</p>
-                        <p class="badge-value">${cell}</p>
+                        <p class="text-[10px] uppercase font-bold text-gray-500 mb-1">Célula</p>
+                        <p class="text-sm font-bold text-white font-mono">${cell}</p>
                     </div>
                     <div class="text-center md:text-left">
-                        <p class="badge-label">Turno</p>
-                        <p class="badge-value">${shift}</p>
+                        <p class="text-[10px] uppercase font-bold text-gray-500 mb-1">Turno</p>
+                        <p class="text-sm font-bold text-white font-mono">${shift}</p>
                     </div>
                     <div class="text-center md:text-left">
-                        <p class="badge-label">Horário</p>
-                        <p class="badge-value">${hours}</p>
+                        <p class="text-[10px] uppercase font-bold text-gray-500 mb-1">Horário</p>
+                        <p class="text-sm font-bold text-white font-mono">${hours}</p>
                     </div>
                 </div>
             </div>
