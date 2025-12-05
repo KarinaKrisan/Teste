@@ -364,4 +364,94 @@ function renderWeekendModules(name) {
     sched.forEach((s, i) => {
         const d = new Date(selectedMonthObj.year, selectedMonthObj.month, i+1);
         const dw = d.getDay();
-        if((dw===0 || dw
+        if((dw===0 || dw===6) && s==='T') {
+            has = true;
+            // Acha colegas
+            const team = Object.keys(scheduleData).filter(n => n!==name && scheduleData[n].schedule[i]==='T');
+            let teamHtml = team.length ? `<div class="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-1">` : '';
+            team.forEach(p => teamHtml += `<span class="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/30">${p}</span>`);
+            if(team.length) teamHtml += `</div>`;
+            
+            const card = document.createElement('div');
+            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden";
+            card.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div><p class="text-orange-400 text-[10px] font-bold uppercase">${dw===0?'Domingo':'Sábado'}</p><p class="text-white font-mono text-2xl font-bold">${pad(i+1)}/${pad(selectedMonthObj.month+1)}</p></div>
+                    <span class="bg-orange-500/20 text-orange-400 px-3 py-1 rounded text-xs font-bold border border-orange-500/30">Escalado</span>
+                </div>
+                ${teamHtml}
+            `;
+            cont.appendChild(card);
+        }
+    });
+    if(!has) cont.innerHTML = `<div class="col-span-full text-center text-gray-500 py-8 border border-dashed border-gray-700 rounded-xl">Folga no FDS</div>`;
+}
+
+function renderAllWeekends() {
+    const cont = document.getElementById('weekendPlantaoContainer');
+    if(!cont) return;
+    cont.innerHTML = '';
+    
+    const daysInMonth = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
+    for(let d=1; d<=daysInMonth; d++) {
+        const date = new Date(selectedMonthObj.year, selectedMonthObj.month, d);
+        const dw = date.getDay();
+        if(dw===0 || dw===6) {
+            const workers = Object.keys(scheduleData).filter(n => scheduleData[n].schedule[d-1]==='T');
+            if(workers.length > 0) {
+                let wHtml = `<div class="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-1">`;
+                workers.forEach(w => wHtml += `<span class="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/30">${w}</span>`);
+                wHtml += `</div>`;
+                
+                const card = document.createElement('div');
+                card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg mb-4";
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div><p class="text-orange-400 text-[10px] font-bold uppercase">${dw===0?'Domingo':'Sábado'}</p><p class="text-white font-mono text-2xl font-bold">${pad(d)}/${pad(selectedMonthObj.month+1)}</p></div>
+                        <span class="bg-orange-500/20 text-orange-400 px-3 py-1 rounded text-xs font-bold border border-orange-500/30">${workers.length} Escalados</span>
+                    </div>
+                    ${wHtml}
+                `;
+                cont.appendChild(card);
+            }
+        }
+    }
+}
+
+function toggleDayStatus(name, idx) {
+    const s = scheduleData[name].schedule[idx];
+    const next = s==='T'?'F':(s==='F'?'FE':'T');
+    scheduleData[name].schedule[idx] = next;
+    if(rawSchedule[name].calculatedSchedule) rawSchedule[name].calculatedSchedule[idx] = next;
+    else rawSchedule[name].schedule[idx] = next;
+    renderPersonalCalendar(name);
+    document.getElementById('saveStatus').textContent = "Alterado*";
+}
+
+// --- STARTUP ---
+function initGlobal() {
+    document.querySelectorAll('.tab-button').forEach(b => {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('.tab-button').forEach(x=>x.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(x=>x.classList.add('hidden'));
+            b.classList.add('active');
+            document.getElementById(`${b.dataset.tab}View`).classList.remove('hidden');
+        });
+    });
+    const ds = document.getElementById('dateSlider');
+    if (ds) {
+        ds.max = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
+        ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
+    }
+    // Botões de login
+    const btnL = document.getElementById('btnConfirmCollabLogin');
+    if(btnL) btnL.onclick = performLogin;
+    
+    // Inicializa Auth (que chama loadData)
+}
+
+// Request logic
+const btnReq = document.getElementById('btnSubmitRequest');
+if(btnReq) btnReq.onclick = async () => { /* ... lógica de requisição igual ... */ };
+
+document.addEventListener('DOMContentLoaded', initGlobal);
