@@ -172,7 +172,6 @@ function updatePersonalView(name) {
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
     
-    // Atualiza Plantão com a nova lógica
     updateWeekendTable(name);
 }
 
@@ -186,61 +185,50 @@ function updateCalendar(name, schedule) {
     });
 }
 
-// --- LÓGICA DE PLANTÃO FIM DE SEMANA ---
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     container.innerHTML = '';
     
-    // Se não tiver escala carregada, sai
     if(Object.keys(scheduleData).length === 0) return;
 
     const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
 
-    // Percorre todos os dias para achar os fins de semana
     for (let d = 1; d <= totalDays; d++) {
         const date = new Date(selectedMonthObj.year, selectedMonthObj.month, d);
         
-        // Se for Sábado
-        if (date.getDay() === 6) {
+        if (date.getDay() === 6) { // Sábado
             const satIndex = d - 1;
-            const sunIndex = d; // Domingo é o dia seguinte (se existir no mês)
+            const sunIndex = d;
             const hasSunday = (d + 1) <= totalDays;
 
             let satWorkers = [];
             let sunWorkers = [];
 
-            // Varre TODOS os funcionários para ver quem trabalha nesse FDS
             Object.keys(scheduleData).forEach(name => {
                 const empSched = scheduleData[name].schedule;
                 if (empSched[satIndex] === 'T') satWorkers.push(name);
                 if (hasSunday && empSched[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            // FILTRO CRUCIAL: Só mostra se o targetName (Colaborador) estiver trabalhando
-            // no sábado OU no domingo desse fim de semana específico.
             const userWorksSat = satWorkers.includes(targetName);
             const userWorksSun = sunWorkers.includes(targetName);
 
-            // Se for Admin, mostra todos. Se for Colaborador, mostra só os seus.
             if (isAdmin || (userWorksSat || userWorksSun)) {
                 
-                // Formata data
                 const satDateStr = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
                 const sunDateStr = hasSunday ? `${pad(d+1)}/${pad(selectedMonthObj.month+1)}` : '-';
 
-                // Cria o HTML do Card
                 let cardHTML = `
                 <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-lg overflow-hidden flex flex-col">
                     <div class="bg-[#0F1020] p-3 border-b border-cronos-border flex justify-between items-center">
                         <span class="text-sky-400 font-bold text-xs uppercase tracking-wider">Fim de Semana</span>
-                        <div class="flex gap-2">
-                            <span class="text-[10px] bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">${satDateStr}</span>
-                            ${hasSunday ? `<span class="text-[10px] bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">${sunDateStr}</span>` : ''}
-                        </div>
                     </div>
                     <div class="p-4 space-y-4 flex-1">
                         <div>
-                            <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center gap-1"><i class="fas fa-calendar-day"></i> Sábado</h4>
+                            <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center justify-between">
+                                <span class="flex items-center gap-1"><i class="fas fa-calendar-day"></i> Sábado</span>
+                                <span class="text-sky-400 bg-sky-900/20 px-1.5 py-0.5 rounded border border-sky-500/20">${satDateStr}</span>
+                            </h4>
                             <div class="flex flex-wrap gap-1">
                                 ${satWorkers.length > 0 ? satWorkers.map(n => `<span class="text-xs px-2 py-1 rounded bg-green-900/20 text-green-400 border border-green-500/20 ${n === targetName ? 'font-bold ring-1 ring-green-500' : ''}">${n}</span>`).join('') : '<span class="text-xs text-gray-600 italic">Sem plantão</span>'}
                             </div>
@@ -248,7 +236,10 @@ function updateWeekendTable(targetName) {
                         
                         ${hasSunday ? `
                         <div class="pt-3 border-t border-[#2E3250]">
-                            <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center gap-1"><i class="fas fa-calendar-day"></i> Domingo</h4>
+                            <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center justify-between">
+                                <span class="flex items-center gap-1"><i class="fas fa-calendar-day"></i> Domingo</span>
+                                <span class="text-indigo-400 bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-500/20">${sunDateStr}</span>
+                            </h4>
                             <div class="flex flex-wrap gap-1">
                                 ${sunWorkers.length > 0 ? sunWorkers.map(n => `<span class="text-xs px-2 py-1 rounded bg-indigo-900/20 text-indigo-400 border border-indigo-500/20 ${n === targetName ? 'font-bold ring-1 ring-indigo-500' : ''}">${n}</span>`).join('') : '<span class="text-xs text-gray-600 italic">Sem plantão</span>'}
                             </div>
@@ -261,7 +252,6 @@ function updateWeekendTable(targetName) {
         }
     }
     
-    // Se não achou nada
     if (container.innerHTML === '') {
         container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado para você neste mês.</p>';
     }
