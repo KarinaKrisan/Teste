@@ -31,8 +31,8 @@ let scheduleData = {};
 let rawSchedule = {};  
 let dailyChart = null;
 let currentDay = new Date().getDate();
+let currentUserDbName = null;
 
-// Data System
 const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -64,26 +64,16 @@ function getInitials(name) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// --- RESOLUÇÃO CRÍTICA: Encontra a escala correta baseada no E-mail ---
 function findNameInScheduleByEmail(email) {
     if (!email || !scheduleData) return null;
-    
     const prefix = email.split('@')[0];
     const normPrefix = normalizeString(prefix); 
-
     const scheduleNames = Object.keys(scheduleData);
-    
     const match = scheduleNames.find(name => {
         const normName = normalizeString(name); 
         return normName === normPrefix || normName.includes(normPrefix) || normPrefix.includes(normName);
     });
-
-    if (match) {
-        console.log(`[MATCH] Escala localizada para: ${email} -> Chave: ${match}`);
-        return match;
-    }
-    
-    console.warn(`[FAIL] Nenhuma escala encontrada para o email: ${email}`);
+    if (match) return match;
     return null;
 }
 
@@ -112,8 +102,7 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Logado: ${userEmail}`);
-
+        
         // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
@@ -128,7 +117,6 @@ onAuthStateChanged(auth, async (user) => {
         } catch (e) { console.error("Erro Admin Check:", e); }
 
         if (isDatabaseAdmin) {
-            console.log(">> Acesso Admin Concedido.");
             setAdminMode(true);
             revealApp();
             renderMonthSelector(); 
@@ -144,16 +132,23 @@ onAuthStateChanged(auth, async (user) => {
             
             if (docSnap.exists()) {
                 isDatabaseCollab = true;
+                currentUserDbName = docSnap.data().nome || docSnap.data().Nome;
             } else {
                 const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
                 const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
                 const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-                if(!s1.empty || !s2.empty) isDatabaseCollab = true;
+                if(!s1.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s1.docs[0].data().nome || s1.docs[0].data().Nome;
+                }
+                else if(!s2.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s2.docs[0].data().nome || s2.docs[0].data().Nome;
+                }
             }
         } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
-            console.log(">> Acesso Colaborador Concedido.");
             setupCollabMode(null); 
             revealApp();
             renderMonthSelector(); 
@@ -161,7 +156,7 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        alert(`ACESSO NEGADO: O usuário ${userEmail} não está cadastrado.`);
+        alert(`ACESSO NEGADO: Usuário não encontrado.`);
         signOut(auth);
         hideApp();
 
@@ -170,7 +165,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// === LÓGICA ADMIN (CORRIGIDA: INICIA NA VISÃO DIÁRIA) ===
 function setAdminMode(active) {
     isAdmin = active;
     const adminToolbar = document.getElementById('adminToolbar');
@@ -183,13 +177,10 @@ function setAdminMode(active) {
         document.getElementById('adminEditHint')?.classList.remove('hidden');
         document.getElementById('collabEditHint')?.classList.add('hidden');
         document.body.style.paddingBottom = "100px";
-        
-        // FORÇA A VISÃO DIÁRIA AO ENTRAR
         if(dailyTabBtn) {
             dailyTabBtn.classList.remove('hidden');
-            dailyTabBtn.click(); // <--- O PULO DO GATO
+            dailyTabBtn.click(); // Força ir para Visão Diária
         }
-        
         startRequestsListener();
     } else {
         if(adminToolbar) adminToolbar.classList.add('hidden');
@@ -207,7 +198,7 @@ function setupCollabMode(name) {
     if(collabToolbar) collabToolbar.classList.remove('hidden');
     
     const display = document.getElementById('collabNameDisplay');
-    if(display) display.textContent = name || "Carregando Escala...";
+    if(display) display.textContent = name || "Carregando...";
     
     document.getElementById('collabEditHint')?.classList.remove('hidden');
     document.getElementById('adminEditHint')?.classList.add('hidden');
@@ -359,15 +350,13 @@ async function loadDataFromCloud() {
                     currentUserCollab = foundName;
                     setupCollabMode(currentUserCollab);
                 } else {
-                    // Se não achou, exibe crachá se possível
-                    renderBadgeOnly(null);
+                    if(currentUserDbName) renderBadgeOnly(currentUserDbName);
                 }
             } 
+            // ADMIN: 
             else if (isAdmin) {
-                // ADMIN: Renderiza Visão Diária E Plantões de Todos
-                renderAllWeekends(); 
-                
-                // Limpa tela de escala individual para forçar seleção
+                renderAllWeekends();
+                // Limpa a view pessoal para forçar seleção
                 const calContainer = document.getElementById('calendarContainer');
                 const infoCard = document.getElementById('personalInfoCard');
                 if(calContainer) calContainer.classList.add('hidden');
@@ -385,8 +374,8 @@ async function loadDataFromCloud() {
                 const calContainer = document.getElementById('calendarContainer');
                 if(calContainer) calContainer.innerHTML = '';
             } 
-            else {
-                renderBadgeOnly(null);
+            else if (currentUserDbName) {
+                renderBadgeOnly(currentUserDbName);
             }
         }
     } catch (e) {
@@ -713,40 +702,24 @@ function renderPersonalCalendar(name) {
         infoCard.innerHTML = `
             <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
                 <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
-
                 <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
                     <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
                         <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
                             ${initials}
                         </div>
                     </div>
-
                     <div class="text-center md:text-left flex-1 w-full">
                         <h3 class="text-xl font-bold text-white leading-tight mb-1">${name}</h3>
                         <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">--</p>
-
                         <div class="grid grid-cols-3 gap-3 w-full">
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Célula</span>
-                                <span id="badgeCelula" class="text-white font-semibold text-xs">--</span>
-                            </div>
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Turno</span>
-                                <span id="badgeTurno" class="text-white font-semibold text-xs">--</span>
-                            </div>
-                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
-                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Horário</span>
-                                <span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span>
-                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Célula</span><span id="badgeCelula" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Turno</span><span id="badgeTurno" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Horário</span><span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span></div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="flex items-center gap-2 mb-3 px-1">
-                <i class="fas fa-calendar-alt text-gray-500"></i>
-                <span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span>
-            </div>
+            <div class="flex items-center gap-2 mb-3 px-1"><i class="fas fa-calendar-alt text-gray-500"></i><span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span></div>
         `;
         
         if(!isAdmin && auth.currentUser) fetchCollaboratorDetails();
@@ -859,20 +832,57 @@ function processScheduleData() {
     });
 }
 
+// ==========================================
+// ATUALIZAÇÃO VISÃO DIÁRIA COM NOMES (NOVA VERSÃO)
+// ==========================================
 function updateDailyView() {
     if(document.getElementById('dailyView').classList.contains('hidden')) return;
+    
+    // Elementos das Listas
+    const listWorking = document.getElementById('listWorking');
+    const listOff = document.getElementById('listOff');
+    const listOffShift = document.getElementById('listOffShift');
+    const listVacation = document.getElementById('listVacation');
+    
+    // Limpa as listas
+    if(listWorking) listWorking.innerHTML = '';
+    if(listOff) listOff.innerHTML = '';
+    if(listOffShift) listOffShift.innerHTML = '';
+    if(listVacation) listVacation.innerHTML = '';
+
     let cWorking = 0, cOff = 0, cOffShift = 0, cVacation = 0;
-    Object.keys(scheduleData).forEach(name => {
+
+    Object.keys(scheduleData).sort().forEach(name => {
         const status = scheduleData[name].schedule[currentDay - 1];
-        if (status === 'T') cWorking++;
-        else if (['F', 'FS', 'FD'].includes(status)) cOff++;
-        else if (status === 'FE') cVacation++;
-        else cOffShift++;
+        
+        // Cria o elemento da lista (Cardzinho com nome)
+        const li = document.createElement('li');
+        li.className = "flex justify-between items-center bg-[#161828] border border-[#2E3250] rounded p-2 mb-1 text-xs hover:bg-[#1F2136] transition-colors";
+        li.innerHTML = `<span class="font-bold text-white">${name}</span><span class="text-gray-500 font-mono font-bold">${status}</span>`;
+
+        // Distribui nas listas e conta
+        if (status === 'T') {
+            cWorking++;
+            if(listWorking) listWorking.appendChild(li);
+        } else if (['F', 'FS', 'FD'].includes(status)) {
+            cOff++;
+            if(listOff) listOff.appendChild(li);
+        } else if (status === 'FE') {
+            cVacation++;
+            if(listVacation) listVacation.appendChild(li);
+        } else {
+            cOffShift++;
+            if(listOffShift) listOffShift.appendChild(li);
+        }
     });
+
+    // Atualiza Números KPI
     const elW = document.getElementById('kpiWorking'); if(elW) elW.textContent = cWorking;
     const elO = document.getElementById('kpiOff'); if(elO) elO.textContent = cOff;
     const elS = document.getElementById('kpiOffShift'); if(elS) elS.textContent = cOffShift;
     const elV = document.getElementById('kpiVacation'); if(elV) elV.textContent = cVacation;
+    
+    // Atualiza Gráfico
     updateChart(cWorking, cOff, cOffShift, cVacation);
 }
 
