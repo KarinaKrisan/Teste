@@ -31,7 +31,7 @@ let scheduleData = {};
 let rawSchedule = {};  
 let dailyChart = null;
 let currentDay = new Date().getDate();
-let currentUserDbName = null; // Nome para exibir no crachá caso não tenha escala
+let currentUserDbName = null;
 
 // Data System
 const currentDateObj = new Date();
@@ -103,7 +103,8 @@ function hideApp() {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        
+        console.log(`[AUTH] Logado: ${userEmail}`);
+
         // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
@@ -342,18 +343,16 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect(); 
             
-            // COLABORADOR: Tenta achar e fixar a escala
             if (!isAdmin && auth.currentUser) {
                 const foundName = findNameInScheduleByEmail(auth.currentUser.email);
                 if (foundName) {
                     currentUserCollab = foundName;
                     setupCollabMode(currentUserCollab);
                 } else {
-                    // Se não achou na escala, mas está logado (tem nome do banco)
                     if(currentUserDbName) renderBadgeOnly(currentUserDbName);
                 }
             } 
-            // ADMIN: Garante que a tela comece limpa
+            // LÓGICA ADMIN: Esconde elementos até seleção
             else if (isAdmin) {
                 const calContainer = document.getElementById('calendarContainer');
                 const infoCard = document.getElementById('personalInfoCard');
@@ -371,7 +370,6 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect();
             
-            // Limpa tela Admin
             if (isAdmin) {
                 const calContainer = document.getElementById('calendarContainer');
                 if(calContainer) calContainer.innerHTML = '';
@@ -861,6 +859,7 @@ function updateDailyView() {
     updateChart(cWorking, cOff, cOffShift, cVacation);
 }
 
+// *** ATUALIZAÇÃO: ADMIN COMEÇA SEM SELEÇÃO ***
 function initSelect() {
     const select = document.getElementById('employeeSelect');
     if (!select) return;
@@ -872,7 +871,7 @@ function initSelect() {
         defaultOpt.value = "";
         defaultOpt.textContent = "Selecione um colaborador";
         defaultOpt.selected = true;
-        defaultOpt.disabled = true;
+        // defaultOpt.disabled = true; // Descomente se quiser obrigar seleção
         select.appendChild(defaultOpt);
 
         Object.keys(scheduleData).sort().forEach(name => {
@@ -884,6 +883,11 @@ function initSelect() {
             if(e.target.value) {
                 renderPersonalCalendar(e.target.value);
                 document.getElementById('calendarContainer').classList.remove('hidden');
+            } else {
+                // Se selecionar vazio de novo, limpa
+                document.getElementById('calendarContainer').classList.add('hidden');
+                document.getElementById('personalInfoCard').classList.add('hidden');
+                document.getElementById('weekendPlantaoContainer').innerHTML = '';
             }
         });
     }
