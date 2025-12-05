@@ -26,8 +26,7 @@ const auth = getAuth(app);
 // 3. ESTADO GLOBAL
 // ==========================================
 let isAdmin = false;
-let currentUserCollab = null; 
-let currentUserDbName = null; // Armazena o nome completo do banco
+let currentUserCollab = null; // Vai guardar o nome exato da escala (Ex: "Karina Krisan")
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
@@ -55,7 +54,7 @@ function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
 function normalizeString(str) {
     if (!str) return "";
-    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, " ");
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function getInitials(name) {
@@ -65,55 +64,31 @@ function getInitials(name) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// --- BUSCA INTELIGENTE DE COLABORADOR NA ESCALA ---
-// Tenta encontrar a chave correta no scheduleData usando Nome do Banco ou Email
-function findScheduleKey(dbName, email) {
-    const keys = Object.keys(scheduleData);
-    if (keys.length === 0) return null;
+// --- RESOLUÇÃO INTELIGENTE: EMAIL -> NOME DA ESCALA ---
+function findNameInScheduleByEmail(email) {
+    if (!email || !scheduleData) return null;
+    
+    // 1. Prepara o prefixo do email (ex: karina.krisan -> karinakrisan)
+    const prefix = email.split('@')[0];
+    const normPrefix = normalizeString(prefix); 
 
-    // 1. Tenta match exato ou parcial pelo Nome do Banco
-    if (dbName) {
-        const normDbName = normalizeString(dbName);
-        const dbNameParts = normDbName.split(' ').filter(p => p.length > 2);
-
-        // Procura uma chave na escala que contenha as partes principais do nome do banco
-        // Ex: dbName="Karina de Oliveira Krisan" -> match com "Karina Krisan"
-        const match = keys.find(key => {
-            const normKey = normalizeString(key);
-            
-            // Verifica se a chave da escala está contida no nome completo
-            if (normDbName.includes(normKey)) return true;
-            
-            // Verifica palavra por palavra (match cruzado)
-            const keyParts = normKey.split(' ').filter(p => p.length > 2);
-            const allKeyPartsInDb = keyParts.every(part => normDbName.includes(part));
-            
-            return allKeyPartsInDb;
-        });
-
-        if (match) return match;
-    }
-
-    // 2. Tenta match pelo Email (Prefixo)
-    if (email) {
-        const prefix = email.split('@')[0];
-        const normPrefix = normalizeString(prefix).replace(/\s/g, ''); // karinakrisan
+    // 2. Varre todas as chaves da escala (ex: "Karina Krisan", "João Silva")
+    const scheduleNames = Object.keys(scheduleData);
+    
+    const match = scheduleNames.find(name => {
+        const normName = normalizeString(name); // Karina Krisan -> karinakrisan
         
-        const matchEmail = keys.find(key => {
-            const normKey = normalizeString(key).replace(/\s/g, ''); // karinakrisan
-            return normKey.includes(normPrefix) || normPrefix.includes(normKey);
-        });
-        
-        if (matchEmail) return matchEmail;
-    }
+        // Verifica se são iguais ou se um contém o outro
+        return normName === normPrefix || normName.includes(normPrefix) || normPrefix.includes(normName);
+    });
 
-    // 3. Fallback: Formata o prefixo do email
-    if (email) {
-        const prefix = email.split('@')[0];
-        return prefix.replace(/\./g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    if (match) {
+        console.log(`[MATCH] Email: ${email} -> Escala: ${match}`);
+        return match; // Retorna o nome exato da chave (ex: "Karina Krisan")
     }
-
-    return "Colaborador";
+    
+    console.warn(`[FAIL] Não achei escala para o email: ${email}`);
+    return null;
 }
 
 const landingPage = document.getElementById('landingPage');
@@ -146,15 +121,17 @@ onAuthStateChanged(auth, async (user) => {
         // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
-            const qAdmin = query(collection(db, "administradores"), where("email", "==", userEmail));
-            const qAdminU = query(collection(db, "administradores"), where("Email", "==", userEmail));
-            const [s1, s2] = await Promise.all([getDocs(qAdmin), getDocs(qAdminU)]);
+            const q1 = query(collection(db, "administradores"), where("email", "==", userEmail));
+            const q2 = query(collection(db, "administradores"), where("Email", "==", userEmail));
+            const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+            
+            // Check UID também
             const docUid = await getDoc(doc(db, "administradores", user.uid));
 
             if (!s1.empty || !s2.empty || docUid.exists()) {
                 isDatabaseAdmin = true;
             }
-        } catch (e) { console.error("Admin Check Error:", e); }
+        } catch (e) { console.error("Erro Admin Check:", e); }
 
         if (isDatabaseAdmin) {
             setAdminMode(true);
@@ -164,46 +141,33 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. COLLAB CHECK
+        // 2. COLLAB CHECK (Apenas valida se existe no banco, não pega nome)
         let isDatabaseCollab = false;
-        let dbName = null;
         try {
-            // Busca pelo UID
-            let collabDoc = await getDoc(doc(db, "colaboradores", user.uid));
+            const docRef = doc(db, "colaboradores", user.uid);
+            const docSnap = await getDoc(docRef);
             
-            // Busca pelo Email (minúsculo e maiúsculo)
-            if (!collabDoc.exists()) {
-                const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
-                const s1 = await getDocs(q1);
-                if (!s1.empty) collabDoc = s1.docs[0];
-            }
-            if (!collabDoc.exists()) {
-                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
-                const s2 = await getDocs(q2);
-                if (!s2.empty) collabDoc = s2.docs[0];
-            }
-
-            if (collabDoc.exists()) {
-                const data = collabDoc.data();
+            if (docSnap.exists()) {
                 isDatabaseCollab = true;
-                // Salva o nome COMPLETO do banco para usar na busca
-                dbName = data.nome || data.Nome || data.name; 
-                currentUserDbName = dbName;
+            } else {
+                // Fallback busca por email se o ID não for o UID
+                const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
+                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
+                const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+                if(!s1.empty || !s2.empty) isDatabaseCollab = true;
             }
-        } catch (e) { console.error("Collab Check Error:", e); }
+        } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
-            // Inicialmente, sem a escala carregada, usamos o nome do banco
-            // Depois, no loadDataFromCloud, ajustamos para a chave da escala
-            currentUserCollab = dbName;
-            setupCollabMode(currentUserCollab);
+            // Não definimos currentUserCollab ainda, esperamos carregar a escala
+            setupCollabMode(null); // Passa null por enquanto
             revealApp();
             renderMonthSelector(); 
             loadDataFromCloud();
             return;
         }
 
-        alert(`ERRO DE LOGIN: Usuário não encontrado nas bases de dados.`);
+        alert(`ERRO DE LOGIN: Usuário não encontrado no banco de dados.`);
         signOut(auth);
         hideApp();
 
@@ -242,7 +206,8 @@ function setupCollabMode(name) {
     if(collabToolbar) collabToolbar.classList.remove('hidden');
     
     const display = document.getElementById('collabNameDisplay');
-    if(display) display.textContent = name;
+    // Se ainda não temos o nome, mostra carregando
+    if(display) display.textContent = name || "Carregando...";
     
     document.getElementById('collabEditHint')?.classList.remove('hidden');
     document.getElementById('adminEditHint')?.classList.add('hidden');
@@ -250,19 +215,21 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
-    const empSelect = document.getElementById('employeeSelect');
-    if(empSelect) {
-        empSelect.innerHTML = '';
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        empSelect.appendChild(opt);
-        empSelect.value = name;
-        empSelect.disabled = true; 
-        
-        // Renderiza se a chave existir na escala atual
-        if (scheduleData && scheduleData[name]) {
-            renderPersonalCalendar(name);
+    // Se já temos o nome resolvido, renderiza
+    if (name) {
+        const empSelect = document.getElementById('employeeSelect');
+        if(empSelect) {
+            empSelect.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            empSelect.appendChild(opt);
+            empSelect.value = name;
+            empSelect.disabled = true; 
+            
+            if (scheduleData && scheduleData[name]) {
+                renderPersonalCalendar(name);
+            }
         }
     }
 
@@ -334,7 +301,7 @@ document.getElementById('btnCollabLogout')?.addEventListener('click', () => sign
 
 
 // ==========================================
-// 6. GESTÃO DE DADOS E MÊS
+// 6. GESTÃO DE DADOS
 // ==========================================
 
 function renderMonthSelector() {
@@ -380,19 +347,17 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect(); 
             
-            // --- LÓGICA CRÍTICA: RESOLUÇÃO DE NOME ---
+            // LÓGICA CRÍTICA: Se for colaborador, descobre o nome AGORA
             if (!isAdmin && auth.currentUser) {
-                // Usa o nome do banco ou o email para achar a chave certa na escala
-                const resolvedKey = findScheduleKey(currentUserDbName, auth.currentUser.email);
+                // Usa o email para achar o nome dentro do 'scheduleData' que acabamos de baixar
+                const foundName = findNameInScheduleByEmail(auth.currentUser.email);
                 
-                if (resolvedKey && scheduleData[resolvedKey]) {
-                    currentUserCollab = resolvedKey;
-                    console.log(`Match encontrado: ${currentUserDbName} -> Escala: ${resolvedKey}`);
+                if (foundName) {
+                    currentUserCollab = foundName;
                     setupCollabMode(currentUserCollab);
                 } else {
-                    console.warn(`Não foi possível encontrar a escala para: ${currentUserDbName || auth.currentUser.email}`);
-                    // Mantém o modo visual, mas a escala virá vazia
-                    setupCollabMode(currentUserCollab || "Colaborador");
+                    console.error("ERRO: E-mail não corresponde a nenhum nome na escala deste mês.");
+                    // Opcional: Mostrar aviso na tela
                 }
             }
         } else {
@@ -402,6 +367,7 @@ async function loadDataFromCloud() {
             processScheduleData(); 
             updateDailyView();
             initSelect();
+            // Se não tem escala, não tem como mostrar nada
             if (!isAdmin && currentUserCollab) setupCollabMode(currentUserCollab);
         }
     } catch (e) {
@@ -652,11 +618,13 @@ window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => 
         
         if (type === 'mudanca_turno') {
             try {
+                // Tenta achar com Nome maiúsculo
                 const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
                 const snap = await getDocs(q);
                 if (!snap.empty) {
                     await updateDoc(snap.docs[0].ref, { Turno: newDetail });
                 } else {
+                    // Tenta achar com nome minúsculo
                     const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
                     const snap2 = await getDocs(q2);
                     if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
@@ -772,7 +740,7 @@ function renderPersonalCalendar(name) {
             </div>
         `;
         
-        fetchCollaboratorDetails(); // CHAMA A BUSCA POR EMAIL OU NOME
+        fetchCollaboratorDetails(); 
     }
     
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
@@ -811,7 +779,6 @@ function renderPersonalCalendar(name) {
 // --- BUSCA DADOS CRÍTICA (CORRIGIDA PARA EMAIL) ---
 async function fetchCollaboratorDetails() {
     try {
-        // TENTA BUSCAR PELO EMAIL DO USUÁRIO LOGADO (SE FOR O PRÓPRIO)
         let data = null;
         
         if (!isAdmin && auth.currentUser) {
@@ -831,9 +798,8 @@ async function fetchCollaboratorDetails() {
         }
 
         if (data) {
-            // Mapeamento flexível para os campos do banco
             const cargo = data.cargo || data.Cargo || "Colaborador";
-            const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral"; // Trata acento
+            const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral";
             const turno = data.turno || data.Turno || "--";
             const horario = data.horario || data.Horario || "--:--";
 
