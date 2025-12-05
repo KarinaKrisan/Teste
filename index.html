@@ -1,29 +1,271 @@
-<header class="mb-10 flex flex-col md:flex-row justify-between items-center gap-6">
-    <div class="text-center md:text-left">
-        <h1 class="text-5xl md:text-6xl font-extrabold mb-1 tracking-tight text-gradient">
-            CRONOS
-        </h1>
-        <div class="flex items-center justify-center md:justify-start gap-3">
-            <div class="h-0.5 w-8 bg-gradient-to-r from-purple-500 to-orange-500"></div>
-            <p class="text-sm font-medium text-gray-400 uppercase tracking-widest">
-                Sua operação no tempo certo.
-            </p>
-        </div>
-        <p id="headerDate" class="text-sm text-gray-500 font-medium mt-2 font-mono"></p>
-    </div>
-    
-    <div class="flex flex-col items-end gap-3 w-full md:w-auto">
-        <div id="monthSelectorContainer" class="w-full md:w-auto"></div>
-        
-        <div id="loginButtonsContainer" class="flex gap-2 w-full md:w-auto">
-            
-            <a href="login-colaborador.html" id="btnOpenCollab" class="flex-1 md:flex-none text-center border border-cronos-border bg-[#0F1020] hover:bg-sky-900/20 text-sky-400 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all hover:text-sky-300 hover:border-sky-500/30 flex items-center justify-center gap-2">
-                <i class="fas fa-user-astronaut text-xs"></i> Sou Colaborador
-            </a>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cronos | Sua operação no tempo certo.</title>
 
-            <a href="login.html" id="btnOpenLogin" class="flex-1 md:flex-none text-center border border-cronos-border bg-cronos-card/50 hover:bg-cronos-card text-gray-300 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all hover:text-white flex items-center justify-center gap-2">
-                <i class="fas fa-lock text-xs"></i> Admin
-            </a>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cronos: {
+                            bg: '#0F1020',       // Deep Space
+                            card: '#1A1C2E',     // Module Dark
+                            border: '#2E3250',   // Tech Border
+                            primary: '#7C3AED',  // Roxo
+                            accent: '#F97316',   // Laranja
+                        }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: { 
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'fade-in-up': 'fadeInUp 0.5s ease-out forwards'
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px) translateX(-50%)' },
+                            '100%': { opacity: '1', transform: 'translateY(0) translateX(-50%)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styless.css"> 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body class="text-gray-300 relative font-sans transition-all duration-300 antialiased selection:bg-purple-500 selection:text-white">
+
+    <div id="adminToolbar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-2xl transition-all duration-500 animate-fade-in-up">
+        <div class="bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5">
+            <div class="flex flex-col justify-center">
+                <span class="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-0.5 flex items-center gap-1.5">
+                    <i class="fas fa-shield-alt"></i> Admin Mode
+                </span>
+                <div class="flex items-center gap-2">
+                    <span id="saveStatusIcon" class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></span>
+                    <span id="saveStatus" class="text-xs text-gray-300 font-medium">Sincronizado</span>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button id="btnSaveCloud" class="group bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center shadow-lg hover:shadow-indigo-500/25 active:scale-95 border border-indigo-500/50">
+                    <i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar
+                </button>
+                <button id="btnLogout" class="bg-gray-800 hover:bg-red-900/20 hover:text-red-400 text-gray-400 px-3.5 py-2.5 rounded-xl transition-all active:scale-95 border border-transparent hover:border-red-500/20" title="Sair">
+                    <i class="fas fa-power-off"></i>
+                </button>
+            </div>
         </div>
     </div>
-</header>
+
+    <div class="container mx-auto p-4 max-w-7xl mt-8 transition-all duration-300 mb-20" id="mainContainer">
+
+        <header class="mb-10 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-center md:text-left">
+                <h1 class="text-5xl md:text-6xl font-extrabold mb-1 tracking-tight text-gradient">
+                    CRONOS
+                </h1>
+                <div class="flex items-center justify-center md:justify-start gap-3">
+                    <div class="h-0.5 w-8 bg-gradient-to-r from-purple-500 to-orange-500"></div>
+                    <p class="text-sm font-medium text-gray-400 uppercase tracking-widest">
+                        Sua operação no tempo certo.
+                    </p>
+                </div>
+                <p id="headerDate" class="text-sm text-gray-500 font-medium mt-2 font-mono"></p>
+            </div>
+            
+            <div class="flex flex-col items-end gap-3 w-full md:w-auto">
+                <div id="monthSelectorContainer" class="w-full md:w-auto"></div>
+                
+                <div id="loginButtonsContainer" class="flex gap-2 w-full md:w-auto">
+                    
+                    <a href="login-colaborador.html" id="btnOpenCollab" class="flex-1 md:flex-none text-center border border-cronos-border bg-[#0F1020] hover:bg-sky-900/20 text-sky-400 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all hover:text-sky-300 hover:border-sky-500/30 flex items-center justify-center gap-2">
+                        <i class="fas fa-user-astronaut text-xs"></i> Sou Colaborador
+                    </a>
+
+                    <a href="login-admin.html" id="btnOpenLogin" class="flex-1 md:flex-none text-center border border-cronos-border bg-cronos-card/50 hover:bg-cronos-card text-gray-300 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-all hover:text-white flex items-center justify-center gap-2">
+                        <i class="fas fa-lock text-xs"></i> Admin
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <nav class="flex flex-wrap gap-2 p-1 mb-8 bg-cronos-card/50 backdrop-blur-sm rounded-xl border border-cronos-border justify-center md:justify-start w-fit mx-auto md:mx-0">
+            <button data-tab="daily" class="tab-button active flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200">
+                <i class="fas fa-chart-pie"></i> Visão Diária
+            </button>
+            <button data-tab="personal" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200">
+                <i class="fas fa-users-cog"></i> Escala & Plantões
+            </button>
+        </nav>
+
+        <main>
+            <div id="dailyView" class="tab-content active space-y-6">
+                
+                <section class="cronos-card p-6 md:p-8 rounded-3xl relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-64 h-64 bg-purple-600/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+
+                    <div class="mb-8 pb-4 border-b border-cronos-border/50">
+                       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                            <div>
+                                <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Status Operacional</h2>
+                                <span id="currentDateLabel" class="text-2xl md:text-3xl font-bold text-white capitalize block"></span>
+                            </div>
+                       </div>
+
+                       <div class="bg-cronos-bg/50 p-4 rounded-xl border border-cronos-border/50">
+                           <label for="dateSlider" class="flex justify-between text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider">
+                               <span>Início do Mês</span>
+                               <span>Linha do Tempo</span>
+                               <span id="sliderMaxLabel">Fim</span>
+                           </label>
+                           <input id="dateSlider" type="range" min="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                       </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-2 gap-4 h-full">
+                            <div class="bg-[#0F1020] p-5 rounded-2xl border border-green-900/30 shadow-lg relative overflow-hidden group">
+                                <div class="absolute right-0 top-0 w-16 h-16 bg-green-500/10 rounded-bl-full transition-all group-hover:bg-green-500/20"></div>
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Em Operação</p>
+                                <p id="kpiWorking" class="text-4xl font-mono font-bold text-white drop-shadow-[0_0_10px_rgba(34,197,94,0.5)]">0</p>
+                                <div class="mt-2 text-xs text-green-400 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Ativos agora</div>
+                            </div>
+                            
+                            <div class="bg-[#0F1020] p-5 rounded-2xl border border-fuchsia-900/30 shadow-lg relative overflow-hidden group">
+                                <div class="absolute right-0 top-0 w-16 h-16 bg-fuchsia-500/10 rounded-bl-full transition-all group-hover:bg-fuchsia-500/20"></div>
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Exp. Encerrado</p>
+                                <p id="kpiOffShift" class="text-4xl font-mono font-bold text-white drop-shadow-[0_0_10px_rgba(217,70,239,0.5)]">0</p>
+                                <div class="mt-2 text-xs text-fuchsia-400 font-medium">Turno finalizado</div>
+                            </div>
+
+                            <div class="bg-[#0F1020] p-5 rounded-2xl border border-yellow-900/30 shadow-lg relative overflow-hidden">
+                                <div class="absolute right-0 top-0 w-16 h-16 bg-yellow-500/10 rounded-bl-full"></div>
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Folga / FDS</p>
+                                <p id="kpiOff" class="text-4xl font-mono font-bold text-white">0</p>
+                                <div class="mt-2 text-xs text-yellow-500 font-medium">Descanso programado</div>
+                            </div>
+                            
+                            <div class="bg-[#0F1020] p-5 rounded-2xl border border-red-900/30 shadow-lg relative overflow-hidden">
+                                <div class="absolute right-0 top-0 w-16 h-16 bg-red-500/10 rounded-bl-full"></div>
+                                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Férias</p>
+                                <p id="kpiVacation" class="text-4xl font-mono font-bold text-white">0</p>
+                                <div class="mt-2 text-xs text-red-400 font-medium">Ausência legal</div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col bg-[#0F1020] rounded-2xl p-6 border border-cronos-border shadow-inner relative h-full min-h-[320px]">
+                            <div class="flex justify-between items-center mb-6 border-b border-gray-800 pb-2">
+                                <h3 id="chartTitle" class="text-sm font-bold text-gray-300 uppercase">Capacidade Operacional</h3>
+                                <button id="btnToggleChart" onclick="window.toggleChartMode()" class="text-[10px] bg-gray-800 text-gray-300 border border-gray-700 px-3 py-1 rounded-full font-bold hover:bg-gray-700 hover:text-white transition-colors uppercase tracking-wide">
+                                    Ver Tendência
+                                </button>
+                            </div>
+                            <div class="chart-container flex-1 w-full relative">
+                                 <canvas id="dailyChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="cronos-card flex flex-col overflow-hidden h-96 rounded-3xl">
+                        <div class="bg-green-900/20 p-4 border-b border-green-900/30 flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]"></span>
+                            <h3 class="font-bold text-green-400 text-sm uppercase tracking-wider">Trabalhando</h3>
+                        </div>
+                        <div class="p-3 overflow-y-auto flex-1 custom-scrollbar"><ul id="listWorking" class="space-y-2"></ul></div>
+                    </div>
+
+                    <div class="cronos-card flex flex-col overflow-hidden h-96 rounded-3xl">
+                        <div class="bg-fuchsia-900/20 p-4 border-b border-fuchsia-900/30 flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-fuchsia-500 shadow-[0_0_8px_#d946ef]"></span>
+                            <h3 class="font-bold text-fuchsia-400 text-sm uppercase tracking-wider">Encerrado</h3>
+                        </div>
+                        <div class="p-3 overflow-y-auto flex-1 custom-scrollbar"><ul id="listOffShift" class="space-y-2"></ul></div>
+                    </div>
+
+                    <div class="cronos-card flex flex-col overflow-hidden h-96 rounded-3xl">
+                        <div class="bg-yellow-900/20 p-4 border-b border-yellow-900/30 flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                            <h3 class="font-bold text-yellow-500 text-sm uppercase tracking-wider">Folga</h3>
+                        </div>
+                        <div class="p-3 overflow-y-auto flex-1 custom-scrollbar"><ul id="listOff" class="space-y-2"></ul></div>
+                    </div>
+
+                    <div class="cronos-card flex flex-col overflow-hidden h-96 rounded-3xl">
+                        <div class="bg-red-900/20 p-4 border-b border-red-900/30 flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                            <h3 class="font-bold text-red-400 text-sm uppercase tracking-wider">Férias</h3>
+                        </div>
+                        <div class="p-3 overflow-y-auto flex-1 custom-scrollbar"><ul id="listVacation" class="space-y-2"></ul></div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="personalView" class="tab-content hidden space-y-8">
+                <section class="cronos-card p-6 md:p-8 rounded-3xl">
+                    
+                    <div id="adminEditHint" class="hidden mb-6 bg-blue-900/20 text-blue-200 px-4 py-3 rounded-xl text-sm border border-blue-500/30 flex items-center shadow-sm">
+                        <i class="fas fa-mouse-pointer mr-2 text-blue-400"></i> 
+                        <span class="font-semibold text-blue-400 mr-1">MODO EDIÇÃO:</span> 
+                        <span>Clique na TAG do dia para alternar o status.</span>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-cronos-border pb-6">
+                        <div>
+                             <h2 class="text-2xl font-bold text-white mb-1">Escala Individual</h2>
+                             <p class="text-gray-400 text-sm">Visualize ou edite a escala detalhada.</p>
+                        </div>
+
+                         <div class="mt-4 md:mt-0 w-full md:w-80 relative">
+                            <select id="employeeSelect" class="appearance-none w-full p-4 bg-[#0F1020] border border-cronos-border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white text-base font-semibold transition-all shadow-lg cursor-pointer">
+                                <option value="">Selecione um colaborador</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-purple-500">
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="personalInfoCard" class="hidden mb-8">
+                        </div>
+
+                    <div id="calendarContainer" class="hidden">
+                        <div class="grid grid-cols-7 gap-1 mb-2 text-center font-bold text-gray-500 text-xs uppercase tracking-wider hidden md:grid">
+                            <div class="p-2">Dom</div><div class="p-2">Seg</div>
+                            <div class="p-2">Ter</div><div class="p-2">Qua</div>
+                            <div class="p-2">Qui</div><div class="p-2">Sex</div>
+                            <div class="p-2">Sáb</div>
+                          </div>
+                        <div id="calendarGrid" class="calendar-grid-container rounded-xl overflow-hidden border border-cronos-border"></div>
+                    </div>
+                </section>
+
+                <section class="cronos-card p-6 md:p-8 rounded-3xl">
+                    <div class="mb-6 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500">
+                            <i class="fas fa-calendar-week"></i>
+                        </div>
+                        <h2 class="text-xl font-bold text-white">Plantão Fins de Semana</h2>
+                    </div>
+                    <div id="weekendPlantaoContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="mt-16 py-8 border-t border-cronos-border text-center">
+            <h2 class="text-2xl font-extrabold text-gray-700 mb-2 opacity-50">CRONOS</h2>
+            <p class="text-xs text-gray-500 font-medium">Sua operação no tempo certo. &copy; 2025</p>
+        </footer>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
