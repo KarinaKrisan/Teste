@@ -26,11 +26,12 @@ const auth = getAuth(app);
 // 3. ESTADO GLOBAL
 // ==========================================
 let isAdmin = false;
-let currentUserCollab = null; // Nome encontrado na escala (ex: "Karina Krisan")
+let currentUserCollab = null; 
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
 let currentDay = new Date().getDate();
+let currentUserDbName = null; // Nome para exibir no crachá caso não tenha escala
 
 // Data System
 const currentDateObj = new Date();
@@ -44,8 +45,7 @@ const availableMonths = [
     { label: "Março 2026", year: 2026, month: 2 }
 ];
 
-// Padrão: Dezembro 2025
-let selectedMonthObj = availableMonths.find(m => m.year === 2025 && m.month === 11) || availableMonths[0];
+let selectedMonthObj = availableMonths.find(m => m.year === currentDateObj.getFullYear() && m.month === currentDateObj.getMonth()) || availableMonths[1];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
@@ -65,28 +65,16 @@ function getInitials(name) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// --- RESOLUÇÃO INTELIGENTE DE NOME VIA EMAIL ---
 function findNameInScheduleByEmail(email) {
     if (!email || !scheduleData) return null;
-    
-    // 1. Normaliza o prefixo do email (ex: karina.krisan -> karinakrisan)
     const prefix = email.split('@')[0];
     const normPrefix = normalizeString(prefix); 
-
-    // 2. Varre todas as chaves da escala (ex: "Karina Krisan")
     const scheduleNames = Object.keys(scheduleData);
-    
     const match = scheduleNames.find(name => {
-        const normName = normalizeString(name); // karinakrisan
-        // Verifica match exato ou parcial
+        const normName = normalizeString(name); 
         return normName === normPrefix || normName.includes(normPrefix) || normPrefix.includes(normName);
     });
-
-    if (match) {
-        console.log(`[MATCH] Email: ${email} -> Escala: ${match}`);
-        return match; 
-    }
-    console.warn(`[FAIL] Nenhuma escala encontrada para o email: ${email}`);
+    if (match) return match;
     return null;
 }
 
@@ -111,20 +99,17 @@ function hideApp() {
     }
 }
 
-// === AUTH LISTENER (O "PORTEIRO") ===
+// === AUTH LISTENER ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Logado: ${userEmail}`);
-
+        
         // 1. ADMIN CHECK
         let isDatabaseAdmin = false;
         try {
-            // Tenta email minúsculo e maiúsculo
             const q1 = query(collection(db, "administradores"), where("email", "==", userEmail));
             const q2 = query(collection(db, "administradores"), where("Email", "==", userEmail));
             const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-            
             const docUid = await getDoc(doc(db, "administradores", user.uid));
 
             if (!s1.empty || !s2.empty || docUid.exists()) {
@@ -133,7 +118,6 @@ onAuthStateChanged(auth, async (user) => {
         } catch (e) { console.error("Erro Admin Check:", e); }
 
         if (isDatabaseAdmin) {
-            console.log(">> Acesso Admin.");
             setAdminMode(true);
             revealApp();
             renderMonthSelector(); 
@@ -141,7 +125,7 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
 
-        // 2. COLLAB CHECK (Verifica apenas se o E-MAIL existe no banco)
+        // 2. COLLAB CHECK
         let isDatabaseCollab = false;
         try {
             const docRef = doc(db, "colaboradores", user.uid);
@@ -149,26 +133,31 @@ onAuthStateChanged(auth, async (user) => {
             
             if (docSnap.exists()) {
                 isDatabaseCollab = true;
+                currentUserDbName = docSnap.data().nome || docSnap.data().Nome;
             } else {
                 const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
                 const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
                 const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-                // Se achou algum documento com esse email, libera
-                if(!s1.empty || !s2.empty) isDatabaseCollab = true;
+                if(!s1.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s1.docs[0].data().nome || s1.docs[0].data().Nome;
+                }
+                else if(!s2.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s2.docs[0].data().nome || s2.docs[0].data().Nome;
+                }
             }
         } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
-            console.log(">> Acesso Colaborador.");
-            // Não sabemos o nome ainda, vamos descobrir ao carregar a escala
             setupCollabMode(null); 
             revealApp();
             renderMonthSelector(); 
-            loadDataFromCloud(); 
+            loadDataFromCloud();
             return;
         }
 
-        alert(`ACESSO NEGADO: E-mail não cadastrado nas bases de dados.`);
+        alert(`ACESSO NEGADO: Usuário não encontrado.`);
         signOut(auth);
         hideApp();
 
@@ -207,7 +196,6 @@ function setupCollabMode(name) {
     if(collabToolbar) collabToolbar.classList.remove('hidden');
     
     const display = document.getElementById('collabNameDisplay');
-    // Mostra "Carregando" enquanto a escala não chega
     if(display) display.textContent = name || "Carregando...";
     
     document.getElementById('collabEditHint')?.classList.remove('hidden');
@@ -216,7 +204,6 @@ function setupCollabMode(name) {
 
     if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
 
-    // Se já descobrimos o nome na escala
     if (name) {
         const empSelect = document.getElementById('employeeSelect');
         if(empSelect) {
@@ -244,7 +231,7 @@ const btnLogout = document.getElementById('btnLogout');
 if(btnLogout) btnLogout.addEventListener('click', () => signOut(auth));
 
 // ==========================================
-// 5. LOGIN E BOTÕES
+// 5. LOGIN
 // ==========================================
 const collabModal = document.getElementById('collabLoginModal');
 const btnLandingCollab = document.getElementById('btnLandingCollab');
@@ -253,21 +240,21 @@ const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
 const emailInput = document.getElementById('collabEmailInput');
 const passInput = document.getElementById('collabPassInput');
 
-// Corrige o clique do botão na Landing Page
 if(btnLandingCollab) {
-    btnLandingCollab.onclick = () => {
+    btnLandingCollab.addEventListener('click', () => {
         if(emailInput) emailInput.value = '';
         if(passInput) passInput.value = '';
         collabModal.classList.remove('hidden');
         setTimeout(() => { if(emailInput) emailInput.focus(); }, 100);
-    };
+    });
 }
 
-if(btnCancelCollab) btnCancelCollab.onclick = () => collabModal.classList.add('hidden');
+if(btnCancelCollab) btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
 
 const performLogin = async () => {
     const email = emailInput.value.trim();
     const pass = passInput.value;
+    const btn = btnConfirmCollab;
 
     if(!email || !pass) return alert("Preencha todos os campos.");
 
@@ -292,21 +279,24 @@ const performLogin = async () => {
     }
 };
 
-if(btnConfirmCollab) btnConfirmCollab.onclick = performLogin;
+if(btnConfirmCollab) btnConfirmCollab.addEventListener('click', performLogin);
 
-// Suporte a Enter
 if(emailInput) {
-    emailInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); passInput.focus(); } };
+    emailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); passInput.focus(); }
+    });
 }
 if(passInput) {
-    passInput.onkeypress = (e) => { if (e.key === 'Enter') { e.preventDefault(); performLogin(); } };
+    passInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); performLogin(); }
+    });
 }
 
 document.getElementById('btnCollabLogout')?.addEventListener('click', () => signOut(auth));
 
 
 // ==========================================
-// 6. GESTÃO DE DADOS (ESCALAS)
+// 6. GESTÃO DE DADOS E MÊS
 // ==========================================
 
 function renderMonthSelector() {
@@ -340,7 +330,7 @@ function renderMonthSelector() {
 
 async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando:", docId);
+    console.log("Baixando dados:", docId);
     
     try {
         const docRef = doc(db, "escalas", docId);
@@ -352,32 +342,46 @@ async function loadDataFromCloud() {
             updateDailyView();
             initSelect(); 
             
-            // LÓGICA DE VÍNCULO:
+            // COLABORADOR: Tenta achar e fixar a escala
             if (!isAdmin && auth.currentUser) {
-                // Usa o e-mail para achar o nome correto na escala
                 const foundName = findNameInScheduleByEmail(auth.currentUser.email);
-                
                 if (foundName) {
                     currentUserCollab = foundName;
                     setupCollabMode(currentUserCollab);
                 } else {
-                    console.warn("Este e-mail não tem escala neste mês.");
-                    // Renderiza o crachá "vazio" ou com dados do banco se possível
-                    fetchCollaboratorDetailsAndRender(null); 
+                    // Se não achou na escala, mas está logado (tem nome do banco)
+                    if(currentUserDbName) renderBadgeOnly(currentUserDbName);
                 }
+            } 
+            // ADMIN: Garante que a tela comece limpa
+            else if (isAdmin) {
+                const calContainer = document.getElementById('calendarContainer');
+                const infoCard = document.getElementById('personalInfoCard');
+                const weekendContainer = document.getElementById('weekendPlantaoContainer');
+                
+                if(calContainer) calContainer.classList.add('hidden');
+                if(infoCard) infoCard.classList.add('hidden');
+                if(weekendContainer) weekendContainer.innerHTML = '';
             }
         } else {
-            console.log("Sem escala para este mês.");
+            console.log("Sem escala.");
             rawSchedule = {}; 
             scheduleData = {};
             processScheduleData(); 
             updateDailyView();
             initSelect();
-            if (!isAdmin && currentUserCollab) setupCollabMode(currentUserCollab);
+            
+            // Limpa tela Admin
+            if (isAdmin) {
+                const calContainer = document.getElementById('calendarContainer');
+                if(calContainer) calContainer.innerHTML = '';
+            } 
+            else if (currentUserDbName) {
+                renderBadgeOnly(currentUserDbName);
+            }
         }
     } catch (e) {
-        console.error("Erro loadData:", e);
-        // Não trava a UI com alert, apenas loga
+        console.error("Erro ao baixar dados:", e);
     }
 }
 
@@ -648,26 +652,103 @@ function applyScheduleChange(req) {
 // -----------------------------------------------------
 // RENDERIZAÇÃO
 // -----------------------------------------------------
+function renderBadgeOnly(name) {
+    const infoCard = document.getElementById('personalInfoCard');
+    if(infoCard) {
+        infoCard.classList.remove('hidden');
+        const displayName = name || "Colaborador";
+        const initials = getInitials(displayName);
+
+        infoCard.innerHTML = `
+            <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
+                    <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
+                        <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
+                            ${initials}
+                        </div>
+                    </div>
+                    <div class="text-center md:text-left flex-1 w-full">
+                        <h3 class="text-xl font-bold text-white leading-tight mb-1">${displayName}</h3>
+                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">Carregando...</p>
+                        <div class="grid grid-cols-3 gap-3 w-full">
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Célula</span><span id="badgeCelula" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Turno</span><span id="badgeTurno" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Horário</span><span id="badgeHorario" class="text-white font-semibold text-xs">--</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center text-gray-500 p-8 border border-dashed border-gray-700 rounded-xl">Escala não encontrada para este mês.</div>
+        `;
+        fetchCollaboratorDetails();
+    }
+}
+
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
     const grid = document.getElementById('calendarGrid');
+    const infoCard = document.getElementById('personalInfoCard');
     
     if(!container || !grid) return;
     
     container.classList.remove('hidden');
     grid.innerHTML = '';
     
-    // Se não tem escala, não quebra, mas também não renderiza
     if(!scheduleData[name]) return;
-
     const schedule = scheduleData[name].schedule;
-    
-    // Renderiza Crachá (busca dados no banco 'colaboradores')
-    fetchCollaboratorDetailsAndRender(name);
+    const initials = getInitials(name);
+
+    if(infoCard) {
+        infoCard.classList.remove('hidden');
+        infoCard.innerHTML = `
+            <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
+
+                <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
+                    <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
+                        <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
+                            ${initials}
+                        </div>
+                    </div>
+
+                    <div class="text-center md:text-left flex-1 w-full">
+                        <h3 class="text-xl font-bold text-white leading-tight mb-1">${name}</h3>
+                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">--</p>
+
+                        <div class="grid grid-cols-3 gap-3 w-full">
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Célula</span>
+                                <span id="badgeCelula" class="text-white font-semibold text-xs">--</span>
+                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Turno</span>
+                                <span id="badgeTurno" class="text-white font-semibold text-xs">--</span>
+                            </div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
+                                <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Horário</span>
+                                <span id="badgeHorario" class="text-white font-semibold text-xs">--:--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 mb-3 px-1">
+                <i class="fas fa-calendar-alt text-gray-500"></i>
+                <span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span>
+            </div>
+        `;
+        
+        if(!isAdmin && auth.currentUser) fetchCollaboratorDetails();
+        else fetchCollaboratorDetailsByKey(name);
+    }
     
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
     for (let i = 0; i < firstDayOfWeek; i++) {
-        grid.appendChild(document.createElement('div'));
+        const emptyCell = document.createElement('div');
+        emptyCell.className = "calendar-cell bg-transparent border-none pointer-events-none"; 
+        grid.appendChild(emptyCell);
     }
 
     for (let i = 0; i < schedule.length; i++) {
@@ -683,80 +764,52 @@ function renderPersonalCalendar(name) {
         else badgeClass += "status-OFF-SHIFT";
 
         cell.innerHTML = `<div class="day-number">${dayNum}</div><div class="${badgeClass}">${status}</div>`;
-        cell.onclick = () => {
-            if(isAdmin) {
-                 // Edição direta Admin
-                 let nxt = 'T';
-                 if(status==='T') nxt='F'; else if(status==='F') nxt='FE';
-                 rawSchedule[name].calculatedSchedule[i] = nxt;
-                 scheduleData[name].schedule[i] = nxt;
-                 renderPersonalCalendar(name);
-                 document.getElementById('saveStatus').textContent = "Alterado*";
-            } else if(currentUserCollab === name) openRequestModal(i);
-        };
+        cell.addEventListener('click', () => {
+            if(isAdmin) toggleDayStatus(name, i);
+            else if(currentUserCollab === name) openRequestModal(i);
+        });
         grid.appendChild(cell);
     }
 
     renderWeekendModules(name);
 }
 
-async function fetchCollaboratorDetailsAndRender(nameScale) {
-    const infoCard = document.getElementById('personalInfoCard');
-    if(!infoCard) return;
-    infoCard.classList.remove('hidden');
-
-    // Valores padrão
-    let cargo = "Colaborador", celula = "Geral", turno = "--", horario = "--:--";
-    let displayName = nameScale || "Colaborador";
-
-    // Tenta buscar no banco 'colaboradores' pelo EMAIL
-    if (!isAdmin && auth.currentUser) {
-        try {
-            const q1 = query(collection(db, "colaboradores"), where("email", "==", auth.currentUser.email));
+async function fetchCollaboratorDetails() {
+    try {
+        let data = null;
+        if (!isAdmin && auth.currentUser) {
+            const userEmail = auth.currentUser.email;
+            const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
             const s1 = await getDocs(q1);
-            let data = null;
             if(!s1.empty) data = s1.docs[0].data();
-            else {
-                const q2 = query(collection(db, "colaboradores"), where("Email", "==", auth.currentUser.email));
+            if(!data) {
+                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
                 const s2 = await getDocs(q2);
                 if(!s2.empty) data = s2.docs[0].data();
             }
+        }
+        if (data) updateBadgeUI(data);
+    } catch (e) { console.error(e); }
+}
 
-            if(data) {
-                // Pega variações de maiúscula/minúscula/acento
-                cargo = data.cargo || data.Cargo || cargo;
-                celula = data.celula || data.Celula || data['célula'] || data.Célula || celula;
-                turno = data.turno || data.Turno || turno;
-                horario = data.horario || data.Horario || data['horário'] || data.Horário || horario;
-                displayName = data.nome || data.Nome || displayName; // Usa nome completo do banco
-            }
-        } catch(e) { console.error(e); }
-    }
+async function fetchCollaboratorDetailsByKey(nameKey) {
+    try {
+        const q = query(collection(db, "colaboradores"), where("Nome", "==", nameKey));
+        const snap = await getDocs(q);
+        if(!snap.empty) updateBadgeUI(snap.docs[0].data());
+    } catch(e){}
+}
 
-    const initials = getInitials(displayName);
+function updateBadgeUI(data) {
+    const cargo = data.cargo || data.Cargo || "Colaborador";
+    const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral";
+    const turno = data.turno || data.Turno || "--";
+    const horario = data.horario || data.Horario || "--:--";
 
-    infoCard.innerHTML = `
-        <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-            <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
-                <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
-                    <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
-                        ${initials}
-                    </div>
-                </div>
-                <div class="text-center md:text-left flex-1 w-full">
-                    <h3 class="text-xl font-bold text-white leading-tight mb-1">${displayName}</h3>
-                    <p class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">${cargo}</p>
-                    <div class="grid grid-cols-3 gap-3 w-full">
-                        <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Célula</span><span class="text-white font-semibold text-xs">${celula}</span></div>
-                        <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Turno</span><span class="text-white font-semibold text-xs">${turno}</span></div>
-                        <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Horário</span><span class="text-white font-semibold text-xs">${horario}</span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="flex items-center gap-2 mb-3 px-1"><i class="fas fa-calendar-alt text-gray-500"></i><span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span></div>
-    `;
+    document.getElementById('badgeCargo').textContent = cargo;
+    document.getElementById('badgeCelula').textContent = celula;
+    document.getElementById('badgeTurno').textContent = turno;
+    document.getElementById('badgeHorario').textContent = horario;
 }
 
 function updateChart(working, off, offShift, vacation) {
@@ -792,9 +845,7 @@ function processScheduleData() {
 }
 
 function updateDailyView() {
-    // Apenas se estiver visível (Admin)
     if(document.getElementById('dailyView').classList.contains('hidden')) return;
-    // ... (Código de KPI - Mantido simplificado aqui para economizar espaço, já que o foco foi o bug) ...
     let cWorking = 0, cOff = 0, cOffShift = 0, cVacation = 0;
     Object.keys(scheduleData).forEach(name => {
         const status = scheduleData[name].schedule[currentDay - 1];
@@ -817,14 +868,23 @@ function initSelect() {
 
     if (isAdmin) {
         select.disabled = false;
-        select.innerHTML = '<option value="">Selecione um colaborador</option>';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Selecione um colaborador";
+        defaultOpt.selected = true;
+        defaultOpt.disabled = true;
+        select.appendChild(defaultOpt);
+
         Object.keys(scheduleData).sort().forEach(name => {
             const opt = document.createElement('option');
             opt.value = name; opt.textContent = name;
             select.appendChild(opt);
         });
         select.addEventListener('change', (e) => {
-            if(e.target.value) renderPersonalCalendar(e.target.value);
+            if(e.target.value) {
+                renderPersonalCalendar(e.target.value);
+                document.getElementById('calendarContainer').classList.remove('hidden');
+            }
         });
     }
 }
