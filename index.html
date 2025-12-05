@@ -12,7 +12,7 @@
                 extend: {
                     colors: { cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250' } },
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'fade-in': 'fadeIn 0.2s ease-out forwards' },
+                    animation: { 'fade-in': 'fadeIn 0.2s ease-out forwards', 'pulse-slow': 'pulse 3s infinite' },
                     keyframes: { fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } } }
                 }
             }
@@ -22,13 +22,6 @@
     <link rel="stylesheet" href="styless.css"> 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <style>
-        .sub-tab-active {
-            background-color: rgba(124, 58, 237, 0.2);
-            color: #D946EF;
-            border-color: rgba(124, 58, 237, 0.5);
-        }
-    </style>
 </head>
 <body class="text-gray-300 relative font-sans transition-all duration-300 antialiased bg-[#0F1020]">
 
@@ -38,7 +31,7 @@
             <div class="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
         <h2 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-orange-400 animate-pulse tracking-widest">CRONOS</h2>
-        <p class="text-xs text-gray-500 mt-2 font-mono">Carregando...</p>
+        <p class="text-xs text-gray-500 mt-2 font-mono">Autenticando...</p>
     </div>
 
     <div id="notificationWrapper" class="hidden fixed bottom-6 right-6 z-50">
@@ -135,9 +128,11 @@
                             </select>
                         </div>
                     </div>
+                    
                     <div id="personalInfoCard" class="hidden mb-8"></div>
+                    
                     <div id="calendarContainer" class="hidden">
-                        <div class="grid grid-cols-7 gap-1 mb-2 text-center font-bold text-gray-500 text-xs uppercase hidden md:grid">
+                        <div class="grid grid-cols-7 gap-1 mb-2 text-center font-bold text-gray-500 text-xs uppercase">
                             <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
                         </div>
                         <div id="calendarGrid" class="calendar-grid-container rounded-xl overflow-hidden border border-cronos-border"></div>
@@ -150,7 +145,6 @@
             </div>
 
             <div id="requestsView" class="tab-content hidden space-y-8">
-                
                 <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
                     <button id="subTabWork" class="flex-1 bg-[#1A1C2E] border border-cronos-border text-gray-400 py-3 px-4 rounded-xl text-sm font-bold transition-all hover:bg-[#2E3250] focus:outline-none sub-tab-active" onclick="window.switchSubTab('troca_dia_trabalho')">
                         <i class="fas fa-calendar-day mr-2"></i> Dias Trabalhados
@@ -175,7 +169,6 @@
                         </div>
                         <div id="receivedRequestsList" class="space-y-3 min-h-[50px]"></div>
                     </section>
-
                     <section class="cronos-card p-6 rounded-3xl">
                         <div class="flex items-center gap-3 mb-6 pb-4 border-b border-[#2E3250]">
                             <div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-500"><i class="fas fa-paper-plane"></i></div>
