@@ -18,6 +18,7 @@ const auth = getAuth(app);
 // Estado
 let isAdmin = false;
 let currentUserName = null;
+let currentUserProfile = null; // Armazena dados completos do DB (cargo, turno, etc)
 let scheduleData = {}; 
 let rawSchedule = {};
 let currentDay = new Date().getDate();
@@ -59,7 +60,10 @@ onAuthStateChanged(auth, async (user) => {
             
             if(collabSnap.exists()) {
                 isAdmin = false;
-                currentUserName = collabSnap.data().name; 
+                // Salva o perfil completo do banco de dados
+                currentUserProfile = collabSnap.data(); 
+                currentUserName = currentUserProfile.name;
+                
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
             }
@@ -129,7 +133,6 @@ function processScheduleData() {
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-    
     const btn = document.querySelector(`[data-tab="${tabName}"]`);
     if(btn) btn.classList.add('active');
     document.getElementById(`${tabName}View`).classList.remove('hidden');
@@ -148,10 +151,8 @@ function updateDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
     dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
-    
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
-    
     Object.keys(scheduleData).forEach(name=>{
         const st = scheduleData[name].schedule[currentDay-1] || 'F';
         const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
@@ -160,18 +161,69 @@ function updateDailyView() {
         else if(st.includes('OFF')) { os++; lists.os+=row; }
         else { o++; lists.o+=row; }
     });
-    
     document.getElementById('kpiWorking').textContent=w; document.getElementById('kpiOff').textContent=o;
     document.getElementById('listWorking').innerHTML=lists.w; document.getElementById('listOff').innerHTML=lists.o;
 }
 
+// === NOVO DESIGN CRACHÁ ===
 function updatePersonalView(name) {
     if(!name || !scheduleData[name]) return;
+    
+    // Prioriza dados do currentUserProfile se for o próprio usuário, senão tenta pegar da escala
+    let role = 'Colaborador';
+    let cell = '--';
+    let shift = '--';
+    let hours = '--';
+
+    if (currentUserProfile && name === currentUserProfile.name) {
+        // Puxa do DB 'colaboradores'
+        role = currentUserProfile.cargo || role;
+        cell = currentUserProfile.celula || cell;
+        shift = currentUserProfile.turno || shift;
+        hours = currentUserProfile.horario || hours;
+    } else if (scheduleData[name].info) {
+        // Fallback: Puxa do DB 'escalas' (caso Admin esteja vendo)
+        role = scheduleData[name].info.Cargo || role;
+        cell = scheduleData[name].info.Celula || scheduleData[name].info.Célula || cell;
+        shift = scheduleData[name].info.Turno || shift;
+        hours = scheduleData[name].info.Horário || hours;
+    }
+
+    const badgeHTML = `
+        <div class="badge-card rounded-2xl shadow-2xl p-0">
+            <div class="p-6">
+                <div class="flex items-center gap-5">
+                    <div class="flex-shrink-0 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center">
+                        <i class="fas fa-user text-2xl text-purple-300"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-white tracking-tight leading-tight">${name}</h2>
+                        <p class="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest mt-1">${role}</p>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/5">
+                    <div class="text-center md:text-left">
+                        <p class="badge-label">Célula</p>
+                        <p class="badge-value">${cell}</p>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <p class="badge-label">Turno</p>
+                        <p class="badge-value">${shift}</p>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <p class="badge-label">Horário</p>
+                        <p class="badge-value">${hours}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('personalInfoCard').innerHTML = badgeHTML;
     document.getElementById('personalInfoCard').classList.remove('hidden');
-    document.getElementById('personalInfoCard').innerHTML = `<h2 class="text-white text-xl font-bold">${name}</h2>`;
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
-    
     updateWeekendTable(name);
 }
 
@@ -188,19 +240,15 @@ function updateCalendar(name, schedule) {
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     container.innerHTML = '';
-    
     if(Object.keys(scheduleData).length === 0) return;
-
     const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
 
     for (let d = 1; d <= totalDays; d++) {
         const date = new Date(selectedMonthObj.year, selectedMonthObj.month, d);
-        
-        if (date.getDay() === 6) { // Sábado
+        if (date.getDay() === 6) { 
             const satIndex = d - 1;
             const sunIndex = d;
             const hasSunday = (d + 1) <= totalDays;
-
             let satWorkers = [];
             let sunWorkers = [];
 
@@ -214,7 +262,6 @@ function updateWeekendTable(targetName) {
             const userWorksSun = sunWorkers.includes(targetName);
 
             if (isAdmin || (userWorksSat || userWorksSun)) {
-                
                 const satDateStr = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
                 const sunDateStr = hasSunday ? `${pad(d+1)}/${pad(selectedMonthObj.month+1)}` : '-';
 
@@ -233,7 +280,6 @@ function updateWeekendTable(targetName) {
                                 ${satWorkers.length > 0 ? satWorkers.map(n => `<span class="text-xs px-2 py-1 rounded bg-green-900/20 text-green-400 border border-green-500/20 ${n === targetName ? 'font-bold ring-1 ring-green-500' : ''}">${n}</span>`).join('') : '<span class="text-xs text-gray-600 italic">Sem plantão</span>'}
                             </div>
                         </div>
-                        
                         ${hasSunday ? `
                         <div class="pt-3 border-t border-[#2E3250]">
                             <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center justify-between">
@@ -246,15 +292,11 @@ function updateWeekendTable(targetName) {
                         </div>` : ''}
                     </div>
                 </div>`;
-                
                 container.insertAdjacentHTML('beforeend', cardHTML);
             }
         }
     }
-    
-    if (container.innerHTML === '') {
-        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado para você neste mês.</p>';
-    }
+    if (container.innerHTML === '') { container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>'; }
 }
 
 // --- INTERACTION ---
@@ -283,13 +325,10 @@ function openRequestModal(name, dayIndex) {
     
     const targetSel = document.getElementById('reqTargetEmployee');
     targetSel.innerHTML = '<option value="">Selecione o colega...</option>';
-    Object.keys(scheduleData).sort().forEach(n => {
-        if(n !== name) targetSel.innerHTML += `<option value="${n}">${n}</option>`;
-    });
+    Object.keys(scheduleData).sort().forEach(n => { if(n !== name) targetSel.innerHTML += `<option value="${n}">${n}</option>`; });
 
     document.getElementById('reqType').value = 'troca_dia_trabalho';
     document.getElementById('swapTargetContainer').classList.remove('hidden');
-
     document.getElementById('requestModal').classList.remove('hidden');
 }
 
@@ -309,7 +348,6 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     const reason = document.getElementById('reqReason').value;
 
     const needsPeer = (type === 'troca_folga' || type === 'troca_dia_trabalho');
-
     if(needsPeer && !targetEmp) { alert("Selecione o colega."); return; }
     if(!reason) { alert("Informe o motivo."); return; }
 
@@ -317,7 +355,6 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
 
     try {
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
-        
         await addDoc(collection(db, "solicitacoes"), {
             monthId: `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`,
             requester: name,
@@ -339,7 +376,6 @@ let notifUnsubscribe = null;
 function initNotificationsListener(role) {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     let q;
-
     if (role === 'admin') {
         q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("status", "==", "pending_leader"));
     } else {
@@ -347,7 +383,6 @@ function initNotificationsListener(role) {
     }
 
     if(notifUnsubscribe) notifUnsubscribe();
-
     notifUnsubscribe = onSnapshot(q, (snapshot) => {
         const badge = document.getElementById('globalBadge');
         const list = document.getElementById('globalList');
@@ -356,33 +391,20 @@ function initNotificationsListener(role) {
 
         badge.textContent = count;
         badge.className = count > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full" : "hidden";
-        
         title.textContent = role === 'admin' ? "Aprovações Pendentes" : "Solicitações de Colegas";
         list.innerHTML = '';
 
         if(count === 0) { list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>'; return; }
 
-        const labels = {
-            'troca_folga': 'Troca de Folga',
-            'troca_dia_trabalho': 'Troca de Dia Trabalhado',
-            'troca_turno': 'Troca de Turno'
-        };
+        const labels = { 'troca_folga': 'Troca de Folga', 'troca_dia_trabalho': 'Troca de Dia Trabalhado', 'troca_turno': 'Troca de Turno' };
 
         snapshot.forEach(docSnap => {
             const req = docSnap.data();
             const dateStr = `${pad(req.dayIndex+1)}/${pad(selectedMonthObj.month+1)}`;
             const label = labels[req.type] || req.type;
-            
             const div = document.createElement('div');
             div.className = "bg-[#0F1020] border border-cronos-border p-3 rounded-lg mb-2";
-            
-            let html = `
-                <div class="mb-2">
-                    <span class="text-sky-400 font-bold text-xs uppercase">${req.requester}</span>
-                    <div class="text-[10px] text-gray-400">Dia ${dateStr} • ${label}</div>
-                </div>
-                <p class="text-xs text-gray-300 italic bg-[#1A1C2E] p-2 rounded mb-2">"${req.reason}"</p>
-            `;
+            let html = `<div class="mb-2"><span class="text-sky-400 font-bold text-xs uppercase">${req.requester}</span><div class="text-[10px] text-gray-400">Dia ${dateStr} • ${label}</div></div><p class="text-xs text-gray-300 italic bg-[#1A1C2E] p-2 rounded mb-2">"${req.reason}"</p>`;
 
             if (role === 'peer') {
                 html += `<div class="flex gap-2"><button onclick="window.handleRequest('${docSnap.id}', 'peer_accept')" class="flex-1 bg-sky-600/20 text-sky-400 border border-sky-600/50 py-1.5 rounded text-xs font-bold hover:bg-sky-600 hover:text-white transition">Aceitar</button><button onclick="window.handleRequest('${docSnap.id}', 'reject')" class="flex-1 bg-red-600/20 text-red-400 border border-red-600/50 py-1.5 rounded text-xs font-bold hover:bg-red-600 hover:text-white transition">Recusar</button></div>`;
@@ -399,13 +421,9 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
     const reqRef = doc(db, "solicitacoes", reqId);
     try {
         if (action === 'reject') { await updateDoc(reqRef, { status: 'rejected' }); } 
-        else if (action === 'peer_accept') {
-            await updateDoc(reqRef, { status: 'pending_leader' });
-            alert("Aceito! Enviado para o líder.");
-        } 
+        else if (action === 'peer_accept') { await updateDoc(reqRef, { status: 'pending_leader' }); alert("Aceito! Enviado para o líder."); } 
         else if (action === 'leader_approve') {
             await updateDoc(reqRef, { status: 'approved' });
-            
             if (targetName) {
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
@@ -418,10 +436,8 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T';
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
             }
-            
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
-            
             alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
