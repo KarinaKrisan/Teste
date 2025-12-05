@@ -17,6 +17,7 @@ const auth = getAuth(app);
 
 // Estado
 let isAdmin = false;
+let hasUnsavedChanges = false; // Controle de salvamento
 let currentUserName = null;
 let currentUserProfile = null; 
 let scheduleData = {}; 
@@ -31,9 +32,6 @@ let selectedMonthObj = availableMonths.find(m => m.year === systemYear && m.mont
 const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga Dom','FE':'Férias','OFF-SHIFT':'Exp.Encerrado', 'F_EFFECTIVE': 'Exp.Encerrado' };
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
-
-// Controle de Sub-Abas
-let activeSubTab = 'troca_dia_trabalho'; // Default
 
 // --- AUTH ---
 const loadingOverlay = document.getElementById('appLoadingOverlay');
@@ -90,13 +88,10 @@ function setupCollaboratorUI(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
-
     document.getElementById('tabDaily').classList.add('hidden');
     document.getElementById('employeeSelectContainer').classList.add('hidden');
-    
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.remove('hidden');
-
     switchTab('personal');
 }
 
@@ -116,12 +111,58 @@ async function loadDataFromCloud() {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
         }
-
     } catch (e) { console.error(e); }
     finally {
         if(loadingOverlay) setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
     }
 }
+
+// --- FUNÇÃO DE SALVAMENTO MANUAL (Para o Líder) ---
+async function saveToCloud() {
+    if(!isAdmin) return;
+    const btn = document.getElementById('btnSaveCloud');
+    const status = document.getElementById('saveStatus');
+    
+    // Feedback Visual
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+    
+    const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
+    
+    try {
+        await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
+        
+        // Sucesso
+        hasUnsavedChanges = false;
+        status.textContent = "Sincronizado";
+        status.className = "text-xs text-gray-300 font-medium";
+        
+        // Remove aviso de saída
+        window.onbeforeunload = null;
+
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }, 1000);
+        
+    } catch (e) {
+        console.error("Erro ao salvar:", e);
+        alert("Erro ao salvar alterações! Verifique sua conexão.");
+        btn.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> Erro';
+    }
+}
+
+// Vincula o botão de salvar
+const btnSave = document.getElementById('btnSaveCloud');
+if(btnSave) btnSave.addEventListener('click', saveToCloud);
+
+// Proteção contra saída sem salvar
+window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
 
 function processScheduleData() {
     scheduleData = {};
@@ -145,24 +186,22 @@ function switchTab(tabName) {
     document.getElementById(`${tabName}View`).classList.remove('hidden');
 }
 
-// Lógica de Sub-Abas (Trocas)
 window.switchSubTab = function(type) {
-    activeSubTab = type;
-    
-    // Atualiza Visual dos Botões
     const btnMap = { 'troca_dia_trabalho': 'subTabWork', 'troca_folga': 'subTabOff', 'troca_turno': 'subTabShift' };
-    Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('sub-tab-active', 'text-purple-400', 'border-purple-500'));
-    
+    Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('sub-tab-active'));
     const activeBtn = document.getElementById(btnMap[type]);
     if(activeBtn) activeBtn.classList.add('sub-tab-active');
 
-    // Atualiza Texto do Botão de Ação
-    const labels = { 'troca_dia_trabalho': 'Solicitar Troca de Dia', 'troca_folga': 'Solicitar Troca de Folga', 'troca_turno': 'Solicitar Troca de Turno' };
-    document.getElementById('btnNewRequestLabel').textContent = labels[type];
+    window.activeRequestType = type; 
+    document.getElementById('btnNewRequestLabel').textContent = { 
+        'troca_dia_trabalho': 'Solicitar Troca de Dia', 
+        'troca_folga': 'Solicitar Troca de Folga', 
+        'troca_turno': 'Solicitar Troca de Turno' 
+    }[type];
 
-    // Recarrega as listas filtradas
     initRequestsTabListener();
 };
+window.activeRequestType = 'troca_dia_trabalho'; // Default
 
 document.querySelectorAll('.tab-button').forEach(b => {
     b.addEventListener('click', () => {
@@ -177,7 +216,18 @@ function updateDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
     dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
-    // ... resto da logica de daily view ...
+    let w=0, o=0, v=0, os=0;
+    let lists = { w:'', o:'', v:'', os:'' };
+    Object.keys(scheduleData).forEach(name=>{
+        const st = scheduleData[name].schedule[currentDay-1] || 'F';
+        const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
+        if(st==='T') { w++; lists.w+=row; }
+        else if(st==='FE') { v++; lists.v+=row; }
+        else if(st.includes('OFF')) { os++; lists.os+=row; }
+        else { o++; lists.o+=row; }
+    });
+    document.getElementById('kpiWorking').textContent=w; document.getElementById('kpiOff').textContent=o;
+    document.getElementById('listWorking').innerHTML=lists.w; document.getElementById('listOff').innerHTML=lists.o;
 }
 
 function updatePersonalView(name) {
@@ -211,7 +261,6 @@ function updatePersonalView(name) {
                 </div>
             </div>
         </div>`;
-        
     document.getElementById('personalInfoCard').classList.remove('hidden');
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
@@ -251,7 +300,6 @@ function updateWeekendTable(targetName) {
             if (isAdmin || (satWorkers.includes(targetName) || sunWorkers.includes(targetName))) {
                 const satDate = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
                 const sunDate = hasSunday ? `${pad(d+1)}/${pad(selectedMonthObj.month+1)}` : '-';
-                
                 container.insertAdjacentHTML('beforeend', `
                 <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-lg overflow-hidden flex flex-col">
                     <div class="bg-[#0F1020] p-3 border-b border-cronos-border flex justify-between items-center"><span class="text-sky-400 font-bold text-xs uppercase tracking-wider">Fim de Semana</span></div>
@@ -269,44 +317,39 @@ function updateWeekendTable(targetName) {
             }
         }
     }
-    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão.</p>';
+    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- INTERACTION ---
+// --- INTERACTION & SAVING LOCAL STATE ---
 window.handleCellClick = function(name, dayIndex) {
     if(isAdmin) {
         const emp = scheduleData[name];
         const next = ['T','F','FE'][(['T','F','FE'].indexOf(emp.schedule[dayIndex])+1)%3];
         emp.schedule[dayIndex] = next;
         rawSchedule[name].calculatedSchedule = emp.schedule;
+        
+        // Marca que houve alteração para o aviso de saída
+        hasUnsavedChanges = true;
+        document.getElementById('saveStatus').textContent = "Alterado (Não Salvo)*";
+        document.getElementById('saveStatus').classList.add('text-orange-400');
+        
         updateCalendar(name, emp.schedule);
         return;
     }
-    // Colaborador: Abre modal em modo específico
-    // Por padrão assume o tipo da aba ativa, mas isso pode ser mudado
     openRequestModal(name, dayIndex);
 }
 
 function openRequestModal(name, dayIndex) {
-    // Configura modal para "Modo Data Específica"
     const d = new Date(selectedMonthObj.year, selectedMonthObj.month, dayIndex + 1);
-    
     document.getElementById('reqDateDisplay').textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
     document.getElementById('reqDateDisplay').classList.remove('hidden');
     document.getElementById('reqDateManual').classList.add('hidden'); 
-    
     document.getElementById('reqDateIndex').value = dayIndex;
     document.getElementById('reqEmployeeName').value = name;
-    
     populateTargetSelect(name);
-    
-    // Força o tipo para a aba ativa
-    document.getElementById('reqType').value = activeSubTab;
-    
-    // Toggle visibilidade do target
-    const isShift = (activeSubTab === 'troca_turno');
+    document.getElementById('reqType').value = window.activeRequestType;
+    const isShift = (window.activeRequestType === 'troca_turno');
     document.getElementById('swapTargetContainer').classList.toggle('hidden', isShift);
-
     document.getElementById('requestModal').classList.remove('hidden');
 }
 
@@ -316,24 +359,18 @@ function populateTargetSelect(myName) {
     Object.keys(scheduleData).sort().forEach(n => { if(n !== myName) s.innerHTML += `<option value="${n}">${n}</option>`; });
 }
 
-// Botão "Nova Solicitação" (Modo Manual)
 document.getElementById('btnNewRequestDynamic').addEventListener('click', () => {
     document.getElementById('reqDateDisplay').classList.add('hidden');
     document.getElementById('reqDateManual').classList.remove('hidden');
     document.getElementById('reqDateIndex').value = ''; 
     document.getElementById('reqEmployeeName').value = currentUserName;
-    
     populateTargetSelect(currentUserName);
-    
-    // Configura baseado na aba ativa
-    document.getElementById('reqType').value = activeSubTab;
-    const isShift = (activeSubTab === 'troca_turno');
+    document.getElementById('reqType').value = window.activeRequestType;
+    const isShift = (window.activeRequestType === 'troca_turno');
     document.getElementById('swapTargetContainer').classList.toggle('hidden', isShift);
-
     document.getElementById('requestModal').classList.remove('hidden');
 });
 
-// Envio
 document.getElementById('btnSendRequest').addEventListener('click', async () => {
     const btn = document.getElementById('btnSendRequest');
     const type = document.getElementById('reqType').value;
@@ -381,8 +418,6 @@ let requestsTabUnsubscribe = null;
 function initRequestsTabListener() {
     if(!currentUserName) return;
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
-    
-    // Consulta genérica e filtra no cliente para evitar complexidade de índices
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", currentUserName));
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName));
 
@@ -390,11 +425,9 @@ function initRequestsTabListener() {
         const list = document.getElementById(containerId);
         list.innerHTML = '';
         let hasItems = false;
-
         snap.forEach(d => {
             const r = d.data();
-            // FILTRO DE SUB-ABA
-            if(r.type === activeSubTab) {
+            if(r.type === window.activeRequestType) {
                 hasItems = true;
                 const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
                 const colorMap = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
@@ -420,12 +453,11 @@ function initRequestsTabListener() {
         });
         if(!hasItems) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
     };
-
     onSnapshot(qSent, (snap) => renderList(snap, 'sentRequestsList', false));
     onSnapshot(qReceived, (snap) => renderList(snap, 'receivedRequestsList', true));
 }
 
-// Global Notification Listener (Top Right - Red Badge)
+// Global Notification Listener
 let notifUnsubscribe = null;
 function initNotificationsListener(role) {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
@@ -438,17 +470,63 @@ function initNotificationsListener(role) {
         const c = snap.size;
         document.getElementById('globalBadge').textContent = c;
         document.getElementById('globalBadge').className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
-        // Popula painel flutuante também... (código simplificado aqui)
+        
+        const list = document.getElementById('globalList');
+        list.innerHTML = '';
+        if(c === 0) list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>';
+        snap.forEach(d => {
+            const r = d.data();
+            list.innerHTML += `<div class="bg-[#0F1020] p-2 rounded mb-1 border border-[#2E3250]"><div class="text-xs text-sky-400 font-bold">${r.requester}</div><div class="text-[10px] text-gray-400">${r.type} • Dia ${r.dayIndex+1}</div>
+            ${role === 'admin' ? 
+            `<div class="flex gap-1 mt-1"><button onclick="window.handleRequest('${d.id}','leader_approve','${r.requester}',${r.dayIndex},'${r.target}')" class="text-[10px] bg-green-900/50 text-green-400 px-2 py-1 rounded">Aprovar</button><button onclick="window.handleRequest('${d.id}','reject')" class="text-[10px] bg-red-900/50 text-red-400 px-2 py-1 rounded">Recusar</button></div>` : 
+            `<div class="flex gap-1 mt-1"><button onclick="window.handleRequest('${d.id}','peer_accept')" class="text-[10px] bg-sky-900/50 text-sky-400 px-2 py-1 rounded">Aceitar</button><button onclick="window.handleRequest('${d.id}','reject')" class="text-[10px] bg-red-900/50 text-red-400 px-2 py-1 rounded">Recusar</button></div>`}</div>`;
+        });
     });
 }
 
-// ... handleRequest e initGlobal mantidos iguais ...
+window.handleRequest = async function(reqId, action, requesterName, dayIndex, targetName) {
+    const reqRef = doc(db, "solicitacoes", reqId);
+    try {
+        if (action === 'reject') { 
+            await updateDoc(reqRef, { status: 'rejected' }); 
+        } 
+        else if (action === 'peer_accept') { 
+            await updateDoc(reqRef, { status: 'pending_leader' }); 
+            alert("Aceito! Enviado para o líder."); 
+        } 
+        else if (action === 'leader_approve') {
+            await updateDoc(reqRef, { status: 'approved' });
+            
+            // 1. Atualiza visual local
+            if (targetName) {
+                const reqStatus = scheduleData[requesterName].schedule[dayIndex];
+                const targetStatus = scheduleData[targetName].schedule[dayIndex];
+                scheduleData[requesterName].schedule[dayIndex] = targetStatus;
+                scheduleData[targetName].schedule[dayIndex] = reqStatus;
+                rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
+                rawSchedule[targetName].calculatedSchedule = scheduleData[targetName].schedule;
+            } else {
+                const curr = scheduleData[requesterName].schedule[dayIndex];
+                scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T'; 
+                rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
+            }
+            
+            // 2. SALVA NO FIRESTORE (AUTOMÁTICO PARA APROVAÇÕES)
+            const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
+            await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
+            
+            alert("Aprovação realizada e salva no banco de dados.");
+            loadDataFromCloud();
+        }
+    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
+}
+
 function initGlobal() {
     initSelect();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    // Month selector...
+    // ... Month selector logic maintained ...
     loadDataFromCloud();
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
-function initSelect() { /* ... */ }
+function initSelect() { /*...*/ }
