@@ -1,60 +1,130 @@
-/* styless.css - Cosmic Dark Theme */
+/* styless.css - Cosmic Dark Theme (Mobile Calendar Optimized) */
+
 body {
     background-color: #0F1020;
-    background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     background-size: 40px 40px;
 }
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+
+/* Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: #0F1020; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #2E3250; border-radius: 10px; }
-.text-gradient { background: linear-gradient(to right, #7C3AED, #D946EF, #F97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.cronos-card { background-color: #1A1C2E; border: 1px solid #2E3250; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); }
+
+.text-gradient {
+    background: linear-gradient(to right, #7C3AED, #D946EF, #F97316);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.cronos-card {
+    background-color: #1A1C2E;
+    border: 1px solid #2E3250;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Tabs */
 .tab-button { color: #94A3B8; background: transparent; border: 1px solid transparent; }
-.tab-button.active { background: rgba(124, 58, 237, 0.1); color: #D946EF; border-color: rgba(124, 58, 237, 0.3); box-shadow: 0 0 15px rgba(124, 58, 237, 0.1); }
-@media (min-width: 768px) { .calendar-grid-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background-color: #2E3250; } }
-.calendar-cell { background-color: #161828; min-height: 80px; padding: 8px; display: flex; flex-direction: column; justify-content: space-between; transition: background-color 0.2s ease; }
-.day-number { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #64748B; }
-.day-status-badge { text-align: center; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
-@media (min-width: 768px) { .day-status-badge { margin-top: 0; } }
-.status-T { background: rgba(16, 185, 129, 0.1); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); } 
-.status-F { background: rgba(251, 191, 36, 0.1); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.3); } 
-.status-FE { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); } 
-.status-OFF-SHIFT, .status-F_EFFECTIVE { background: rgba(217, 70, 239, 0.1); color: #E879F9; border: 1px solid rgba(217, 70, 239, 0.3); }
-.status-FS { background: rgba(56, 189, 248, 0.1); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.3); }
-.status-FD { background: rgba(99, 102, 241, 0.1); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.3); }
+.tab-button.active {
+    background: rgba(124, 58, 237, 0.1);
+    color: #D946EF;
+    border-color: rgba(124, 58, 237, 0.3);
+    box-shadow: 0 0 15px rgba(124, 58, 237, 0.1);
+}
+.sub-tab-active {
+    background-color: rgba(124, 58, 237, 0.2);
+    color: #D946EF;
+    border-color: rgba(124, 58, 237, 0.5);
+}
+
+/* --- CALENDÁRIO OTIMIZADO (GRID) --- */
+.calendar-grid-container {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px; /* Espaço entre dias */
+    padding: 4px;
+    background-color: #1A1C2E;
+}
+
+.calendar-cell {
+    aspect-ratio: 1 / 1.1; /* Quase quadrado */
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background-color: #161828;
+}
+
+.calendar-cell:active { transform: scale(0.95); }
+
+/* Dia do Mês */
+.day-number {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #94A3B8;
+    margin-bottom: 2px;
+}
+
+/* Badge de Status dentro do dia */
+.day-status-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 2px 0;
+    width: 100%;
+    text-align: center;
+    border-radius: 4px;
+}
+
+/* --- STATUS COLORS (Estilo Neon/Glass) --- */
+/* Trabalhando (Verde) */
+.status-T .day-status-badge { color: #4ADE80; text-shadow: 0 0 5px rgba(74, 222, 128, 0.5); }
+.status-T { background: rgba(22, 163, 74, 0.15); border-color: rgba(22, 163, 74, 0.3); }
+
+/* Folga (Amarelo) */
+.status-F .day-status-badge { color: #FACC15; }
+.status-F { background: rgba(202, 138, 4, 0.15); border-color: rgba(202, 138, 4, 0.3); }
+
+/* Férias (Vermelho) */
+.status-FE .day-status-badge { color: #F87171; }
+.status-FE { background: rgba(220, 38, 38, 0.15); border-color: rgba(220, 38, 38, 0.3); }
+
+/* Exp. Encerrado / Efetivo (Roxo) */
+.status-OFF-SHIFT .day-status-badge, .status-F_EFFECTIVE .day-status-badge { color: #E879F9; }
+.status-OFF-SHIFT, .status-F_EFFECTIVE { background: rgba(192, 38, 211, 0.15); border-color: rgba(192, 38, 211, 0.3); }
+
+/* Folga Sabado/Domingo (Azuis) */
+.status-FS .day-status-badge { color: #38BDF8; }
+.status-FS { background: rgba(2, 132, 199, 0.15); border-color: rgba(2, 132, 199, 0.3); }
+
+.status-FD .day-status-badge { color: #818CF8; }
+.status-FD { background: rgba(79, 70, 229, 0.15); border-color: rgba(79, 70, 229, 0.3); }
+
+/* Range Slider */
 input[type=range] { -webkit-appearance: none; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #D946EF; box-shadow: 0 0 10px rgba(217, 70, 239, 0.8); cursor: pointer; margin-top: -6px; }
 input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #2E3250; border-radius: 2px; }
 
-/* Scrollbar do Painel de Solicitações */
+/* Scrollbar Requests */
 #requestsPanel ::-webkit-scrollbar { width: 4px; }
 #requestsPanel ::-webkit-scrollbar-track { background: #0F1020; }
 #requestsPanel ::-webkit-scrollbar-thumb { background: #2E3250; border-radius: 4px; }
 
-/* ESTILO DO CRACHÁ DIGITAL */
+/* Badge Card (Crachá) */
 .badge-card {
     background: linear-gradient(145deg, #1A1C2E 0%, #151725 100%);
     border: 1px solid rgba(124, 58, 237, 0.2);
     position: relative;
     overflow: hidden;
+    border-radius: 1rem;
 }
-.badge-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0; height: 4px;
-    background: linear-gradient(90deg, #7C3AED, #D946EF, #F97316);
-}
-.badge-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #94A3B8;
-    font-weight: 700;
-    margin-bottom: 2px;
-}
-.badge-value {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #F8FAFC;
-    font-family: 'JetBrains Mono', monospace;
-}
+.badge-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #7C3AED, #D946EF, #F97316); }
+.badge-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94A3B8; font-weight: 700; margin-bottom: 2px; }
+.badge-value { font-size: 0.95rem; font-weight: 600; color: #F8FAFC; font-family: 'JetBrains Mono', monospace; }
