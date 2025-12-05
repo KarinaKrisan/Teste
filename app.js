@@ -26,14 +26,18 @@ const auth = getAuth(app);
 // 3. ESTADO GLOBAL
 // ==========================================
 let isAdmin = false;
-let currentUserCollab = null; // Chave da Escala (ex: "Karina Krisan")
+let currentUserCollab = null; // Nome na escala (ex: "Karina Krisan")
+let currentUserDbName = null; // Nome no banco (ex: "Karina de Oliveira Krisan")
 let scheduleData = {}; 
 let rawSchedule = {};  
 let dailyChart = null;
 let currentDay = new Date().getDate();
 
-// Configuração de Meses
+// Data System
+const currentDateObj = new Date();
 const monthNames = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// Configuração de Meses Disponíveis
 const availableMonths = [
     { label: "Novembro 2025", year: 2025, month: 10 },
     { label: "Dezembro 2025", year: 2025, month: 11 }, 
@@ -42,14 +46,20 @@ const availableMonths = [
     { label: "Março 2026", year: 2026, month: 2 }
 ];
 
-// Define mês inicial (Tenta Dezembro/2025 por padrão)
+// Tenta selecionar Dezembro/2025 por padrão para teste
 let selectedMonthObj = availableMonths.find(m => m.year === 2025 && m.month === 11) || availableMonths[0];
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+// ==========================================
+// 4. GESTÃO DE ACESSO & UTILS
+// ==========================================
+
 function normalizeString(str) {
     if (!str) return "";
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+
 function getInitials(name) {
     if (!name) return "CR";
     const parts = name.split(' ');
@@ -57,9 +67,32 @@ function getInitials(name) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// ==========================================
-// 4. GESTÃO DE UI (INTERFACE)
-// ==========================================
+// --- RESOLUÇÃO DE NOME: Cruzamento Email vs Escala ---
+function findNameInScheduleByEmail(email) {
+    if (!email || !scheduleData) return null;
+    
+    // 1. Normaliza o email (ex: karina.krisan -> karinakrisan)
+    const prefix = email.split('@')[0];
+    const normPrefix = normalizeString(prefix); 
+
+    // 2. Pega chaves da escala
+    const scheduleNames = Object.keys(scheduleData);
+    
+    // 3. Procura match
+    const match = scheduleNames.find(name => {
+        const normName = normalizeString(name); 
+        return normName === normPrefix || normName.includes(normPrefix) || normPrefix.includes(normName);
+    });
+
+    if (match) {
+        console.log(`[MATCH] Email: ${email} -> Escala: ${match}`);
+        return match;
+    }
+    
+    console.warn(`[FAIL] Não encontrei escala para o email: ${email}`);
+    return null;
+}
+
 const landingPage = document.getElementById('landingPage');
 const appInterface = document.getElementById('appInterface');
 
@@ -81,75 +114,68 @@ function hideApp() {
     }
 }
 
-// ==========================================
-// 5. AUTENTICAÇÃO E FLUXO DE CARGA
-// ==========================================
+// === AUTH LISTENER (Login Centralizado) ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userEmail = user.email.trim();
-        console.log(`[AUTH] Usuário logado: ${userEmail}`);
+        console.log(`[AUTH] Logado: ${userEmail}`);
 
-        // 1. Verifica se é ADMIN
+        // 1. Verifica ADMIN
         let isDatabaseAdmin = false;
         try {
-            const adminRef = doc(db, "administradores", user.uid);
-            const adminSnap = await getDoc(adminRef);
-            
-            if (!adminSnap.exists()) {
-                // Tenta por email se não achou por UID
-                const q = query(collection(db, "administradores"), where("Email", "==", userEmail)); // Tenta Maiúsculo
-                const snap = await getDocs(q);
-                if(!snap.empty) isDatabaseAdmin = true;
-                else {
-                    const q2 = query(collection(db, "administradores"), where("email", "==", userEmail)); // Tenta minúsculo
-                    const snap2 = await getDocs(q2);
-                    if(!snap2.empty) isDatabaseAdmin = true;
-                }
-            } else {
+            const q1 = query(collection(db, "administradores"), where("email", "==", userEmail));
+            const q2 = query(collection(db, "administradores"), where("Email", "==", userEmail));
+            const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+            const docUid = await getDoc(doc(db, "administradores", user.uid));
+
+            if (!s1.empty || !s2.empty || docUid.exists()) {
                 isDatabaseAdmin = true;
             }
-        } catch (e) { console.error("Erro auth admin:", e); }
+        } catch (e) { console.error("Erro Admin Check:", e); }
 
         if (isDatabaseAdmin) {
-            console.log(">> Modo Admin Ativado");
+            console.log(">> Acesso Admin.");
             setAdminMode(true);
             revealApp();
-            renderMonthSelector();
-            loadDataFromCloud(); // Admin carrega e vê tudo
+            renderMonthSelector(); 
+            loadDataFromCloud();
             return;
         }
 
-        // 2. Verifica se é COLABORADOR (Apenas checa existência)
+        // 2. Verifica COLABORADOR
         let isDatabaseCollab = false;
         try {
-            const collabRef = doc(db, "colaboradores", user.uid);
-            const collabSnap = await getDoc(collabRef);
-            if(collabSnap.exists()) isDatabaseCollab = true;
-            else {
-                // Fallback busca email
-                const qC = query(collection(db, "colaboradores"), where("email", "==", userEmail));
-                const snapC = await getDocs(qC);
-                if(!snapC.empty) isDatabaseCollab = true;
-                else {
-                    const qC2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
-                    const snapC2 = await getDocs(qC2);
-                    if(!snapC2.empty) isDatabaseCollab = true;
+            const docRef = doc(db, "colaboradores", user.uid);
+            const docSnap = await getDoc(docRef);
+            
+            if (docSnap.exists()) {
+                isDatabaseCollab = true;
+                currentUserDbName = docSnap.data().nome || docSnap.data().Nome;
+            } else {
+                const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
+                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
+                const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+                if(!s1.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s1.docs[0].data().nome || s1.docs[0].data().Nome;
+                }
+                else if(!s2.empty) {
+                    isDatabaseCollab = true;
+                    currentUserDbName = s2.docs[0].data().nome || s2.docs[0].data().Nome;
                 }
             }
-        } catch(e) { console.error("Erro auth collab:", e); }
+        } catch (e) { console.error("Erro Collab Check:", e); }
 
         if (isDatabaseCollab) {
-            console.log(">> Modo Colaborador Ativado");
-            isAdmin = false;
+            console.log(">> Acesso Colaborador.");
+            setupCollabMode(null); // Espera carregar a escala
             revealApp();
-            renderMonthSelector();
-            
-            // IMPORTANTE: Primeiro carrega a escala, depois descobre quem é o usuário nela
-            await loadDataFromCloud(); 
+            renderMonthSelector(); 
+            loadDataFromCloud(); // AQUI busca a escala
             return;
         }
 
-        alert("Usuário não encontrado nas bases de dados.");
+        alert(`ACESSO NEGADO: Usuário não encontrado no banco de dados.`);
         signOut(auth);
         hideApp();
 
@@ -158,12 +184,171 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
+function setAdminMode(active) {
+    isAdmin = active;
+    const adminToolbar = document.getElementById('adminToolbar');
+    const collabToolbar = document.getElementById('collabToolbar');
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
+    
+    if(active) {
+        if(adminToolbar) adminToolbar.classList.remove('hidden');
+        if(collabToolbar) collabToolbar.classList.add('hidden'); 
+        document.getElementById('adminEditHint')?.classList.remove('hidden');
+        document.getElementById('collabEditHint')?.classList.add('hidden');
+        document.body.style.paddingBottom = "100px";
+        if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
+        startRequestsListener();
+    } else {
+        if(adminToolbar) adminToolbar.classList.add('hidden');
+        document.getElementById('adminEditHint')?.classList.add('hidden');
+    }
+}
+
+function setupCollabMode(name) {
+    isAdmin = false;
+    const adminToolbar = document.getElementById('adminToolbar');
+    const collabToolbar = document.getElementById('collabToolbar');
+    const dailyTabBtn = document.querySelector('button[data-tab="daily"]'); 
+    
+    if(adminToolbar) adminToolbar.classList.add('hidden');
+    if(collabToolbar) collabToolbar.classList.remove('hidden');
+    
+    const display = document.getElementById('collabNameDisplay');
+    if(display) display.textContent = name || "Carregando...";
+    
+    document.getElementById('collabEditHint')?.classList.remove('hidden');
+    document.getElementById('adminEditHint')?.classList.add('hidden');
+    document.body.style.paddingBottom = "100px";
+
+    if(dailyTabBtn) dailyTabBtn.classList.add('hidden');
+
+    const empSelect = document.getElementById('employeeSelect');
+    if(empSelect) {
+        empSelect.innerHTML = '';
+        const opt = document.createElement('option');
+        // Se tem nome, usa ele. Se não, usa o do banco de dados
+        const displayName = name || currentUserDbName || "Colaborador";
+        opt.value = displayName;
+        opt.textContent = displayName;
+        empSelect.appendChild(opt);
+        empSelect.value = displayName;
+        empSelect.disabled = true; 
+        
+        // Só renderiza se tivermos o nome da escala
+        if (name && scheduleData[name]) {
+            renderPersonalCalendar(name);
+        }
+    }
+
+    const personalTab = document.querySelector('[data-tab="personal"]');
+    if(personalTab) personalTab.click();
+    
+    startRequestsListener();
+}
+
+const btnLogout = document.getElementById('btnLogout');
+if(btnLogout) btnLogout.addEventListener('click', () => signOut(auth));
+
 // ==========================================
-// 6. CARREGAMENTO DE DADOS (CORE)
+// 5. LOGIN (CORREÇÃO DO BOTÃO TRAVADO)
 // ==========================================
+const collabModal = document.getElementById('collabLoginModal');
+const btnLandingCollab = document.getElementById('btnLandingCollab');
+const btnCancelCollab = document.getElementById('btnCancelCollabLogin');
+const btnConfirmCollab = document.getElementById('btnConfirmCollabLogin');
+const emailInput = document.getElementById('collabEmailInput');
+const passInput = document.getElementById('collabPassInput');
+
+if(btnLandingCollab) {
+    btnLandingCollab.addEventListener('click', () => {
+        if(emailInput) emailInput.value = '';
+        if(passInput) passInput.value = '';
+        collabModal.classList.remove('hidden');
+        setTimeout(() => { if(emailInput) emailInput.focus(); }, 100);
+    });
+}
+
+if(btnCancelCollab) btnCancelCollab.addEventListener('click', () => collabModal.classList.add('hidden'));
+
+const performLogin = async () => {
+    const email = emailInput.value.trim();
+    const pass = passInput.value;
+
+    if(!email || !pass) return alert("Preencha todos os campos.");
+
+    if(btnConfirmCollab) {
+        btnConfirmCollab.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btnConfirmCollab.disabled = true;
+    }
+
+    try {
+        await signInWithEmailAndPassword(auth, email, pass);
+        collabModal.classList.add('hidden');
+    } catch (e) {
+        console.error(e);
+        let msg = "Erro no login.";
+        if(e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = "E-mail ou senha incorretos.";
+        alert(msg);
+    } finally {
+        if(btnConfirmCollab) {
+            btnConfirmCollab.innerHTML = 'Entrar';
+            btnConfirmCollab.disabled = false;
+        }
+    }
+};
+
+if(btnConfirmCollab) btnConfirmCollab.addEventListener('click', performLogin);
+
+if(emailInput) {
+    emailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); passInput.focus(); }
+    });
+}
+if(passInput) {
+    passInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); performLogin(); }
+    });
+}
+
+document.getElementById('btnCollabLogout')?.addEventListener('click', () => signOut(auth));
+
+
+// ==========================================
+// 6. GESTÃO DE DADOS E MÊS
+// ==========================================
+
+function renderMonthSelector() {
+    const container = document.getElementById('monthSelectorContainer');
+    if(!container) return;
+    if(container.innerHTML !== '') return;
+
+    const select = document.createElement('select');
+    select.className = "bg-[#1A1C2E] border border-cronos-border text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full p-2.5 shadow-lg font-bold";
+    
+    availableMonths.forEach((m, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = m.label;
+        if (m.year === selectedMonthObj.year && m.month === selectedMonthObj.month) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+
+    select.addEventListener('change', (e) => {
+        const index = parseInt(e.target.value);
+        selectedMonthObj = availableMonths[index];
+        rawSchedule = {};
+        scheduleData = {};
+        loadDataFromCloud();
+    });
+
+    container.appendChild(select);
+}
+
 async function loadDataFromCloud() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log(`[DATA] Baixando escala: ${docId}`);
+    console.log("Baixando dados da coleção 'escalas':", docId);
     
     try {
         const docRef = doc(db, "escalas", docId);
@@ -172,115 +357,377 @@ async function loadDataFromCloud() {
         if (docSnap.exists()) {
             rawSchedule = docSnap.data();
             processScheduleData(); 
+            updateDailyView();
+            initSelect(); 
             
-            // Se for colaborador, precisamos encontrar qual "chave" da escala pertence a ele
+            // Se for colaborador, descobre o nome dele NA ESCALA usando o email
             if (!isAdmin && auth.currentUser) {
-                resolveUserIdentity(auth.currentUser.email);
+                const foundNameInSchedule = findNameInScheduleByEmail(auth.currentUser.email);
+                if (foundNameInSchedule) {
+                    currentUserCollab = foundNameInSchedule;
+                    setupCollabMode(currentUserCollab);
+                } else {
+                    console.warn("AVISO: Email logado não corresponde a nenhum nome na escala.");
+                    // Renderiza o "Crachá" mesmo sem escala, usando dados do banco de colaboradores
+                    if(currentUserDbName) renderBadgeOnly(currentUserDbName);
+                }
             }
-            
-            // Se for admin, ou se já resolveu o usuário, atualiza a tela
-            updateDailyView();
-            initSelect();
-            
         } else {
-            console.warn("[DATA] Escala não encontrada.");
-            rawSchedule = {};
+            console.log("Nenhum documento de escala encontrado.");
+            rawSchedule = {}; 
             scheduleData = {};
-            processScheduleData();
+            processScheduleData(); 
             updateDailyView();
             initSelect();
-            if(!isAdmin) setupCollabMode(null); // Limpa tela
+            if (!isAdmin && currentUserDbName) renderBadgeOnly(currentUserDbName);
         }
     } catch (e) {
-        console.error("Erro crítico ao baixar dados:", e);
-        alert("Erro de conexão ao baixar escala.");
+        console.error("Erro ao baixar dados:", e);
     }
 }
 
-// FUNÇÃO CRÍTICA: DESCOBRE QUEM É O USUÁRIO NA ESCALA
-function resolveUserIdentity(email) {
-    if (!email || !scheduleData) return;
-
-    // 1. Normaliza email (karina.krisan -> karinakrisan)
-    const prefix = email.split('@')[0];
-    const normPrefix = normalizeString(prefix);
-
-    // 2. Varre as chaves da escala (Ex: "Karina Krisan")
-    const keys = Object.keys(scheduleData);
-    const match = keys.find(key => {
-        const normKey = normalizeString(key);
-        return normKey.includes(normPrefix) || normPrefix.includes(normKey);
-    });
-
-    if (match) {
-        console.log(`[IDENTITY] Identificado: ${match}`);
-        currentUserCollab = match;
-        setupCollabMode(match); // Renderiza a tela do colaborador
-    } else {
-        console.warn(`[IDENTITY] Não encontrei escala para: ${email}`);
-        currentUserCollab = null;
-        setupCollabMode(null); // Mostra estado vazio
-    }
-}
-
-// ==========================================
-// 7. LÓGICA DE INTERFACE
-// ==========================================
-
-function setAdminMode(active) {
-    isAdmin = active;
-    const adminToolbar = document.getElementById('adminToolbar');
-    const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]');
+async function saveToCloud() {
+    if(!isAdmin) return;
+    const btn = document.getElementById('btnSaveCloud');
+    const status = document.getElementById('saveStatus');
+    const statusIcon = document.getElementById('saveStatusIcon');
     
-    if(active) {
-        if(adminToolbar) adminToolbar.classList.remove('hidden');
-        if(collabToolbar) collabToolbar.classList.add('hidden');
-        if(dailyTabBtn) dailyTabBtn.classList.remove('hidden');
-        startRequestsListener();
-    } else {
-        if(adminToolbar) adminToolbar.classList.add('hidden');
-    }
-}
-
-function setupCollabMode(name) {
-    isAdmin = false;
-    const adminToolbar = document.getElementById('adminToolbar');
-    const collabToolbar = document.getElementById('collabToolbar');
-    const dailyTabBtn = document.querySelector('button[data-tab="daily"]');
-    const display = document.getElementById('collabNameDisplay');
-
-    if(adminToolbar) adminToolbar.classList.add('hidden');
-    if(collabToolbar) collabToolbar.classList.remove('hidden');
-    if(dailyTabBtn) dailyTabBtn.classList.add('hidden'); // Colaborador não vê visão diária global
-
-    if (name) {
-        if(display) display.textContent = name;
-        
-        // Renderiza apenas a escala dele
-        renderPersonalCalendar(name);
-        
-        // Trava o select
-        const empSelect = document.getElementById('employeeSelect');
-        if(empSelect) {
-            empSelect.innerHTML = `<option value="${name}">${name}</option>`;
-            empSelect.value = name;
-            empSelect.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> ...';
+    const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
+    
+    try {
+        await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
+        if(status) {
+            status.textContent = "Salvo!";
+            statusIcon.className = "w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]";
         }
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-0.5 transition-transform"></i> Salvar';
+            if(status) {
+                status.textContent = "Sincronizado";
+                statusIcon.className = "w-1.5 h-1.5 rounded-full bg-emerald-500";
+            }
+        }, 2000);
+    } catch (e) {
+        console.error("Erro ao salvar:", e);
+        btn.innerHTML = 'Erro';
+    }
+}
+document.getElementById('btnSaveCloud')?.addEventListener('click', saveToCloud);
+
+// ==========================================
+// 7. LÓGICA DE SOLICITAÇÕES
+// ==========================================
+const requestModal = document.getElementById('requestModal');
+const btnCloseReq = document.getElementById('btnCloseRequestModal');
+const btnSubmitReq = document.getElementById('btnSubmitRequest');
+const targetPeerSelect = document.getElementById('targetPeerSelect');
+let selectedRequestDate = null;
+let selectedRequestType = 'troca_folga'; 
+
+window.openRequestModal = function(dayIndex) {
+    if(!currentUserCollab) return;
+    selectedRequestDate = dayIndex;
+    
+    const dateStr = `${pad(dayIndex+1)}/${pad(selectedMonthObj.month+1)}`;
+    document.getElementById('requestDateLabel').textContent = `Para o dia ${dateStr}`;
+    document.getElementById('newShiftInput').value = '';
+    
+    if(targetPeerSelect) {
+        targetPeerSelect.innerHTML = '<option value="">Selecione um colega...</option>';
+        Object.keys(scheduleData).sort().forEach(name => {
+            if(!name.toLowerCase().includes(currentUserCollab.toLowerCase())) {
+                const opt = document.createElement('option');
+                opt.value = name; opt.textContent = name;
+                targetPeerSelect.appendChild(opt);
+            }
+        });
+    }
+    requestModal.classList.remove('hidden');
+}
+
+document.querySelectorAll('.req-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.req-type-btn').forEach(b => b.classList.remove('active', 'bg-purple-500/20', 'border-purple-500', 'text-white'));
+        document.querySelectorAll('.req-type-btn').forEach(b => b.classList.add('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]'));
         
-        // Força ir para a aba pessoal
-        const personalTab = document.querySelector('[data-tab="personal"]');
-        if(personalTab) personalTab.click();
+        btn.classList.remove('bg-[#0F1020]', 'text-gray-400', 'border-[#2E3250]');
+        btn.classList.add('active', 'bg-purple-500/20', 'border-purple-500', 'text-white');
         
-        startRequestsListener();
-    } else {
-        if(display) display.textContent = "Sem escala";
-        const container = document.getElementById('calendarContainer');
-        if(container) container.innerHTML = '<div class="p-8 text-center text-gray-500">Nenhuma escala encontrada para este mês.</div>';
+        selectedRequestType = btn.dataset.type;
+        
+        if(selectedRequestType === 'troca_folga' || selectedRequestType === 'troca_dia') {
+            document.getElementById('swapFields').classList.remove('hidden');
+            document.getElementById('shiftFields').classList.add('hidden');
+        } else {
+            document.getElementById('swapFields').classList.add('hidden');
+            document.getElementById('shiftFields').classList.remove('hidden');
+        }
+    });
+});
+
+if(btnCloseReq) btnCloseReq.addEventListener('click', () => requestModal.classList.add('hidden'));
+
+if(btnSubmitReq) {
+    btnSubmitReq.addEventListener('click', async () => {
+        if(selectedRequestDate === null) return;
+        
+        const reqData = {
+            requester: currentUserCollab,
+            dayIndex: selectedRequestDate,
+            dayLabel: `${pad(selectedRequestDate+1)}/${pad(selectedMonthObj.month+1)}`,
+            monthYear: `${selectedMonthObj.year}-${selectedMonthObj.month}`,
+            type: selectedRequestType,
+            createdAt: new Date().toISOString(),
+            status: 'pendente' 
+        };
+
+        if (selectedRequestType === 'troca_folga') {
+            const target = targetPeerSelect.value;
+            if(!target) return alert("Selecione um colega.");
+            reqData.target = target;
+            reqData.status = 'pendente_colega'; 
+            reqData.description = `quer trocar folga com você no dia ${reqData.dayLabel}`;
+        } 
+        else if (selectedRequestType === 'troca_dia') {
+            const target = targetPeerSelect.value;
+            if(!target) return alert("Selecione um colega.");
+            reqData.target = target;
+            reqData.status = 'pendente_colega'; 
+            reqData.description = `quer trocar o dia trabalhado com você em ${reqData.dayLabel}`;
+        }
+        else {
+            const newShift = document.getElementById('newShiftInput').value;
+            if(!newShift) return alert("Digite o turno desejado.");
+            reqData.newDetail = newShift;
+            reqData.status = 'pendente_lider'; 
+            reqData.description = `solicita mudança de turno para: ${newShift}`;
+        }
+
+        try {
+            btnSubmitReq.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+            await addDoc(collection(db, "requests"), reqData);
+            requestModal.classList.add('hidden');
+            alert("Solicitação enviada com sucesso!");
+        } catch (e) {
+            console.error(e);
+            alert("Erro ao enviar.");
+        } finally {
+            btnSubmitReq.innerHTML = 'Enviar Solicitação';
+        }
+    });
+}
+
+// ==========================================
+// 8. NOTIFICAÇÕES (COM AUTOMAÇÃO)
+// ==========================================
+const drawer = document.getElementById('notificationDrawer');
+const list = document.getElementById('notificationList');
+const badges = { admin: document.getElementById('adminBadge'), collab: document.getElementById('collabBadge') };
+
+document.getElementById('btnAdminRequests')?.addEventListener('click', () => openDrawer());
+document.getElementById('btnCollabInbox')?.addEventListener('click', () => openDrawer());
+document.getElementById('btnCloseDrawer')?.addEventListener('click', () => drawer.classList.remove('translate-x-0'));
+
+function openDrawer() {
+    if(drawer) drawer.classList.add('translate-x-0');
+}
+
+function startRequestsListener() {
+    const q = query(collection(db, "requests"), where("monthYear", "==", `${selectedMonthObj.year}-${selectedMonthObj.month}`));
+    
+    onSnapshot(q, (snapshot) => {
+        if(!list) return;
+        list.innerHTML = '';
+        let count = 0;
+        
+        snapshot.forEach(docSnap => {
+            const req = docSnap.data();
+            const rid = docSnap.id;
+            let show = false;
+            let canAction = false;
+            
+            if (isAdmin) {
+                if (req.status === 'pendente_lider') { show = true; canAction = true; count++; }
+            } else if (currentUserCollab) {
+                if (req.status === 'pendente_colega' && req.target && req.target.toLowerCase().includes(currentUserCollab.toLowerCase())) {
+                    show = true; canAction = true; count++;
+                }
+                if (req.requester.toLowerCase().includes(currentUserCollab.toLowerCase())) {
+                    show = true; canAction = false;
+                }
+            }
+
+            if (show) renderRequestItem(rid, req, canAction);
+        });
+
+        if(isAdmin && badges.admin) {
+            badges.admin.textContent = count;
+            badges.admin.classList.toggle('hidden', count === 0);
+        } else if (badges.collab) {
+            badges.collab.textContent = count;
+            badges.collab.classList.toggle('hidden', count === 0);
+        }
+
+        if(list.children.length === 0) {
+            list.innerHTML = `<div class="text-center mt-10 text-gray-500"><i class="fas fa-check-circle text-4xl mb-3 opacity-20"></i><p class="text-sm">Nada pendente.</p></div>`;
+        }
+    });
+}
+
+function renderRequestItem(id, req, canAction) {
+    let statusColor = 'gray';
+    let statusText = 'Pendente';
+    
+    if (req.status === 'pendente_colega') { statusColor = 'orange'; statusText = `Aguardando ${req.target}`; }
+    else if (req.status === 'pendente_lider') { statusColor = 'purple'; statusText = 'Aprovação do Líder'; }
+    else if (req.status === 'aprovado') { statusColor = 'green'; statusText = 'Aprovado'; }
+    else if (req.status === 'rejeitado') { statusColor = 'red'; statusText = 'Rejeitado'; }
+
+    const item = document.createElement('div');
+    item.className = "bg-[#0F1020] p-4 rounded-xl border border-[#2E3250] shadow-sm relative overflow-hidden";
+    
+    let actionButtons = '';
+    if (canAction) {
+        let btnText = isAdmin ? 'Aprovar Troca' : 'Concordo';
+        if (req.type === 'mudanca_turno' && isAdmin) btnText = 'Aprovar Mudança';
+        
+        actionButtons = `
+            <div class="flex gap-2 mt-3">
+                <button onclick="window.rejectRequest('${id}')" class="flex-1 bg-red-900/20 hover:bg-red-900/40 text-red-400 py-2 rounded text-xs font-bold border border-red-500/30">Recusar</button>
+                <button onclick="window.acceptRequest('${id}', '${req.status}', '${req.type}', '${req.requester}', '${req.newDetail}')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded text-xs font-bold shadow-lg">${btnText}</button>
+            </div>
+        `;
+    }
+
+    item.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+            <span class="text-xs font-bold text-${statusColor}-400 border border-${statusColor}-500/30 bg-${statusColor}-500/10 px-2 py-0.5 rounded uppercase">${statusText}</span>
+            <span class="text-[10px] text-gray-500 font-mono">${req.dayLabel}</span>
+        </div>
+        <p class="text-sm text-gray-300">
+            <strong class="text-white">${req.requester}</strong> ${req.description}
+        </p>
+        ${actionButtons}
+    `;
+    
+    list.appendChild(item);
+}
+
+window.rejectRequest = async (id) => {
+    if(!confirm("Rejeitar solicitação?")) return;
+    await updateDoc(doc(db, "requests", id), { status: 'rejeitado' });
+}
+
+window.acceptRequest = async (id, currentStatus, type, requester, newDetail) => {
+    if (currentStatus === 'pendente_colega') {
+        await updateDoc(doc(db, "requests", id), { status: 'pendente_lider' });
+        alert("Você concordou! Enviado para o líder.");
+    }
+    else if (currentStatus === 'pendente_lider' && isAdmin) {
+        if(!confirm("Aprovar solicitação?")) return;
+        
+        if (type === 'mudanca_turno') {
+            try {
+                const q = query(collection(db, "colaboradores"), where("Nome", "==", requester));
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    await updateDoc(snap.docs[0].ref, { Turno: newDetail });
+                } else {
+                    const q2 = query(collection(db, "colaboradores"), where("nome", "==", requester));
+                    const snap2 = await getDocs(q2);
+                    if(!snap2.empty) await updateDoc(snap2.docs[0].ref, { turno: newDetail });
+                }
+            } catch(e) { console.error(e); }
+        } else {
+            const reqSnap = await getDoc(doc(db, "requests", id));
+            applyScheduleChange(reqSnap.data());
+            await saveToCloud();
+        }
+
+        await updateDoc(doc(db, "requests", id), { status: 'aprovado' });
+        alert("Solicitação aprovada e aplicada!");
     }
 }
 
-// --- RENDERIZAÇÃO DO CRACHÁ (HEADER) ---
+function applyScheduleChange(req) {
+    const idx = req.dayIndex;
+    if (req.type === 'troca_folga' || req.type === 'troca_dia') {
+        const statusA = rawSchedule[req.requester].calculatedSchedule[idx];
+        const statusB = rawSchedule[req.target].calculatedSchedule[idx];
+        
+        rawSchedule[req.requester].calculatedSchedule[idx] = statusB;
+        rawSchedule[req.target].calculatedSchedule[idx] = statusA;
+        
+        scheduleData[req.requester].schedule[idx] = statusB;
+        scheduleData[req.target].schedule[idx] = statusA;
+    }
+}
+
+function toggleDayStatus(name, index) {
+    const currentStatus = scheduleData[name].schedule[index];
+    let nextStatus = 'T';
+    
+    if (currentStatus === 'T') nextStatus = 'F';
+    else if (currentStatus === 'F') nextStatus = 'FE';
+    else if (currentStatus === 'FE') nextStatus = 'T';
+    else nextStatus = 'T'; 
+
+    scheduleData[name].schedule[index] = nextStatus;
+    if (rawSchedule[name].calculatedSchedule) {
+        rawSchedule[name].calculatedSchedule[index] = nextStatus;
+    } else if (rawSchedule[name].schedule) {
+        rawSchedule[name].schedule[index] = nextStatus;
+    }
+
+    renderPersonalCalendar(name);
+    
+    const statusEl = document.getElementById('saveStatus');
+    const iconEl = document.getElementById('saveStatusIcon');
+    if(statusEl) {
+        statusEl.textContent = "Alterações pendentes";
+        statusEl.className = "text-xs text-yellow-400 font-bold animate-pulse";
+        iconEl.className = "w-1.5 h-1.5 rounded-full bg-yellow-500";
+    }
+}
+
+// -----------------------------------------------------
+// ATUALIZAÇÃO: HEADER CRACHÁ (LEITURA DINÂMICA)
+// -----------------------------------------------------
+function renderBadgeOnly(name) {
+    const infoCard = document.getElementById('personalInfoCard');
+    if(infoCard) {
+        infoCard.classList.remove('hidden');
+        // Usa o nome do banco de dados se não houver nome de escala
+        const displayName = name || "Colaborador";
+        const initials = getInitials(displayName);
+
+        infoCard.innerHTML = `
+            <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
+                    <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
+                        <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
+                            ${initials}
+                        </div>
+                    </div>
+                    <div class="text-center md:text-left flex-1 w-full">
+                        <h3 class="text-xl font-bold text-white leading-tight mb-1">${displayName}</h3>
+                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">Carregando...</p>
+                        <div class="grid grid-cols-3 gap-3 w-full">
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Célula</span><span id="badgeCelula" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Turno</span><span id="badgeTurno" class="text-white font-semibold text-xs">--</span></div>
+                            <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start"><span class="text-gray-500 uppercase font-bold text-[9px]">Horário</span><span id="badgeHorario" class="text-white font-semibold text-xs">--</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center text-gray-500 p-8 border border-dashed border-gray-700 rounded-xl">Escala não encontrada para este mês.</div>
+        `;
+        fetchCollaboratorDetails();
+    }
+}
+
 function renderPersonalCalendar(name) {
     const container = document.getElementById('calendarContainer');
     const grid = document.getElementById('calendarGrid');
@@ -295,21 +742,23 @@ function renderPersonalCalendar(name) {
     const schedule = scheduleData[name].schedule;
     const initials = getInitials(name);
 
-    // Renderiza o Crachá
     if(infoCard) {
         infoCard.classList.remove('hidden');
         infoCard.innerHTML = `
             <div class="bg-gradient-to-r from-[#1A1C2E] to-[#161828] border border-[#2E3250] rounded-2xl p-6 shadow-xl relative overflow-hidden group mb-6">
                 <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
+
                 <div class="flex flex-col md:flex-row items-center gap-6 relative z-10">
                     <div class="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-purple-600 to-orange-500 shadow-lg shrink-0">
                         <div class="w-full h-full rounded-full bg-[#0F1020] flex items-center justify-center text-2xl font-bold text-white tracking-widest">
                             ${initials}
                         </div>
                     </div>
+
                     <div class="text-center md:text-left flex-1 w-full">
                         <h3 class="text-xl font-bold text-white leading-tight mb-1">${name}</h3>
-                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">Carregando...</p>
+                        <p id="badgeCargo" class="text-xs text-purple-400 font-bold uppercase tracking-widest mb-4 bg-purple-500/10 inline-block px-2 py-1 rounded border border-purple-500/20">--</p>
+
                         <div class="grid grid-cols-3 gap-3 w-full">
                             <div class="bg-[#0F1020]/80 border border-[#2E3250] p-2 rounded flex flex-col items-center md:items-start">
                                 <span class="text-gray-500 uppercase font-bold text-[9px] tracking-wider mb-0.5">Célula</span>
@@ -327,18 +776,18 @@ function renderPersonalCalendar(name) {
                     </div>
                 </div>
             </div>
+            
             <div class="flex items-center gap-2 mb-3 px-1">
                 <i class="fas fa-calendar-alt text-gray-500"></i>
                 <span class="text-sm text-gray-400 font-medium capitalize">${selectedMonthObj.label}</span>
             </div>
         `;
-        // Busca os dados do crachá na coleção 'colaboradores' usando o email do login
-        if(!isAdmin && auth.currentUser) fetchCollaboratorDetails(auth.currentUser.email);
-        else fetchCollaboratorDetailsByKey(name); // Fallback para admin visualizando
+        
+        fetchCollaboratorDetails(); 
     }
     
-    // Renderiza Dias
     const firstDayOfWeek = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
+
     for (let i = 0; i < firstDayOfWeek; i++) {
         const emptyCell = document.createElement('div');
         emptyCell.className = "calendar-cell bg-transparent border-none pointer-events-none"; 
@@ -348,6 +797,7 @@ function renderPersonalCalendar(name) {
     for (let i = 0; i < schedule.length; i++) {
         const status = schedule[i] || '-';
         const dayNum = i + 1;
+        
         const cell = document.createElement('div');
         cell.className = "calendar-cell border-b border-r border-[#2E3250] relative group cursor-pointer";
         
@@ -362,170 +812,83 @@ function renderPersonalCalendar(name) {
             if(isAdmin) toggleDayStatus(name, i);
             else if(currentUserCollab === name) openRequestModal(i);
         });
+
         grid.appendChild(cell);
     }
 
     renderWeekendModules(name);
 }
 
-// Busca dados para o crachá via Email (mais seguro)
-async function fetchCollaboratorDetails(email) {
+// --- BUSCA DADOS CRÍTICA ---
+async function fetchCollaboratorDetails() {
     try {
-        const q1 = query(collection(db, "colaboradores"), where("email", "==", email));
-        const s1 = await getDocs(q1);
         let data = null;
         
-        if(!s1.empty) data = s1.docs[0].data();
-        else {
-            const q2 = query(collection(db, "colaboradores"), where("Email", "==", email));
-            const s2 = await getDocs(q2);
-            if(!s2.empty) data = s2.docs[0].data();
+        if (!isAdmin && auth.currentUser) {
+            const userEmail = auth.currentUser.email;
+            const q1 = query(collection(db, "colaboradores"), where("email", "==", userEmail));
+            const s1 = await getDocs(q1);
+            if(!s1.empty) data = s1.docs[0].data();
+            
+            if(!data) {
+                const q2 = query(collection(db, "colaboradores"), where("Email", "==", userEmail));
+                const s2 = await getDocs(q2);
+                if(!s2.empty) data = s2.docs[0].data();
+            }
         }
 
-        if (data) updateBadgeUI(data);
-    } catch (e) { console.error(e); }
-}
+        if (data) {
+            const cargo = data.cargo || data.Cargo || "Colaborador";
+            const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral";
+            const turno = data.turno || data.Turno || "--";
+            const horario = data.horario || data.Horario || "--:--";
 
-// Fallback: Busca por nome (para admin)
-async function fetchCollaboratorDetailsByKey(nameKey) {
-    // Implementação simplificada para visualização do admin
-    // Tenta buscar pelo nome da chave
-    try {
-        const q = query(collection(db, "colaboradores"), where("Nome", "==", nameKey)); // Tenta match exato
-        const snap = await getDocs(q);
-        if(!snap.empty) updateBadgeUI(snap.docs[0].data());
-    } catch(e){}
-}
-
-function updateBadgeUI(data) {
-    const cargo = data.Cargo || data.cargo || "Colaborador";
-    const celula = data['célula'] || data.célula || data.celula || data.Celula || "Geral";
-    const turno = data.Turno || data.turno || "--";
-    const horario = data.Horario || data.horario || "--:--";
-
-    document.getElementById('badgeCargo').textContent = cargo;
-    document.getElementById('badgeCelula').textContent = celula;
-    document.getElementById('badgeTurno').textContent = turno;
-    document.getElementById('badgeHorario').textContent = horario;
-}
-
-// ==========================================
-// OUTRAS FUNÇÕES DE RENDERIZAÇÃO
-// ==========================================
-function processScheduleData() {
-    scheduleData = {};
-    if (!rawSchedule) return;
-    Object.keys(rawSchedule).forEach(name => {
-        const scheduleArr = rawSchedule[name].calculatedSchedule || rawSchedule[name].schedule || [];
-        scheduleData[name] = { schedule: scheduleArr, info: rawSchedule[name].info || {} };
-    });
-}
-
-function updateDailyView() {
-    // Lógica simplificada para atualizar KPIs (apenas se estiver visível)
-    const container = document.getElementById('dailyView');
-    if(!container || container.classList.contains('hidden')) return;
-    
-    // ... (Código de KPI igual ao anterior) ...
-    // Vou omitir aqui para focar na correção do travamento, mas mantenha o código de KPI original se precisar
-}
-
-function initSelect() {
-    const select = document.getElementById('employeeSelect');
-    if (!select) return;
-    select.innerHTML = '';
-
-    if (isAdmin) {
-        select.disabled = false;
-        select.innerHTML = '<option value="">Selecione um colaborador</option>';
-        Object.keys(scheduleData).sort().forEach(name => {
-            const opt = document.createElement('option');
-            opt.value = name; opt.textContent = name;
-            select.appendChild(opt);
-        });
-        select.addEventListener('change', (e) => {
-            if(e.target.value) renderPersonalCalendar(e.target.value);
-        });
+            const elCargo = document.getElementById('badgeCargo');
+            if(elCargo) elCargo.textContent = cargo;
+            
+            const elCelula = document.getElementById('badgeCelula');
+            if(elCelula) elCelula.textContent = celula;
+            
+            const elTurno = document.getElementById('badgeTurno');
+            if(elTurno) elTurno.textContent = turno;
+            
+            const elHorario = document.getElementById('badgeHorario');
+            if(elHorario) elHorario.textContent = horario;
+        }
+    } catch (e) {
+        console.error("Erro ao buscar detalhes do colaborador:", e);
     }
 }
 
-function renderWeekendModules(name) {
-    const container = document.getElementById('weekendPlantaoContainer');
-    if(!container || !scheduleData[name]) return;
-    container.innerHTML = '';
+function updateChart(working, off, offShift, vacation) {
+    const ctx = document.getElementById('dailyChart');
+    if (!ctx) return;
 
-    const schedule = scheduleData[name].schedule;
-    let hasWeekend = false;
+    if (dailyChart) {
+        dailyChart.data.datasets[0].data = [working, off, vacation, offShift];
+        dailyChart.update();
+        return;
+    }
 
-    schedule.forEach((status, index) => {
-        const day = index + 1;
-        const date = new Date(selectedMonthObj.year, selectedMonthObj.month, day);
-        const dw = date.getDay();
-        if ((dw === 0 || dw === 6) && status === 'T') {
-            hasWeekend = true;
-            const dateStr = `${pad(day)}/${pad(selectedMonthObj.month + 1)}`;
-            const dayName = dw === 0 ? 'Domingo' : 'Sábado';
-            
-            // Busca colegas
-            const colleagues = [];
-            Object.keys(scheduleData).forEach(peer => {
-                if(peer !== name && scheduleData[peer].schedule[index] === 'T') colleagues.push(peer);
-            });
-
-            let colHtml = colleagues.length ? `<div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2">` : `<div class="mt-4 text-xs text-gray-500">Sozinho</div>`;
-            colleagues.forEach(c => {
-                colHtml += `<span class="bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-[10px] font-bold border border-orange-500/30">${c}</span>`;
-            });
-            if(colleagues.length) colHtml += `</div>`;
-
-            const card = document.createElement('div');
-            card.className = "bg-[#161828] border border-orange-500/30 p-4 rounded-xl shadow-lg relative overflow-hidden group";
-            card.innerHTML = `
-                <div class="flex justify-between items-center relative z-10">
-                    <div>
-                        <p class="text-orange-400 text-[10px] font-bold uppercase">${dayName}</p>
-                        <p class="text-white font-mono text-2xl font-bold">${dateStr}</p>
-                    </div>
-                    <span class="bg-orange-500/20 text-orange-400 px-3 py-1 rounded-lg text-xs font-bold border border-orange-500/30">Escalado</span>
-                </div>
-                ${colHtml}
-            `;
-            container.appendChild(card);
+    // @ts-ignore
+    dailyChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Trab.', 'Folga', 'Férias', 'Encerr.'],
+            datasets: [{
+                data: [working, off, vacation, offShift],
+                backgroundColor: ['#22c55e', '#eab308', '#ef4444', '#d946ef'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
         }
     });
-
-    if(!hasWeekend) container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500 border border-dashed border-gray-700 rounded-xl">Folga no FDS</div>`;
 }
 
-function renderMonthSelector() {
-    const container = document.getElementById('monthSelectorContainer');
-    if(!container || container.innerHTML !== '') return;
-    const select = document.createElement('select');
-    select.className = "bg-[#1A1C2E] border border-cronos-border text-white text-sm rounded-lg block w-full p-2.5 font-bold";
-    availableMonths.forEach((m, idx) => {
-        const opt = document.createElement('option');
-        opt.value = idx; opt.textContent = m.label;
-        if(m.year === selectedMonthObj.year && m.month === selectedMonthObj.month) opt.selected = true;
-        select.appendChild(opt);
-    });
-    select.addEventListener('change', e => {
-        selectedMonthObj = availableMonths[e.target.value];
-        rawSchedule = {}; scheduleData = {};
-        loadDataFromCloud();
-    });
-    container.appendChild(select);
-}
-
-// ==========================================
-// LÓGICA DE SOLICITAÇÕES
-// ==========================================
-// ... (Mantenha o código de Modal, Botões e Envio de Solicitação igual ao anterior) ...
-// Para economizar espaço na resposta, assumo que você manteve essa parte.
-// Se precisar dessa parte também, me avise.
-
-// ==========================================
-// BOOTSTRAP
-// ==========================================
 function initGlobal() {
     document.querySelectorAll('.tab-button').forEach(b => {
         b.addEventListener('click', () => {
@@ -535,25 +898,17 @@ function initGlobal() {
             document.getElementById(`${b.dataset.tab}View`).classList.remove('hidden');
         });
     });
+
+    const ds = document.getElementById('dateSlider');
+    if (ds) {
+        ds.max = 31; 
+        ds.addEventListener('input', e => { 
+            currentDay = parseInt(e.target.value); 
+            updateDailyView(); 
+        });
+    }
+    
     loadDataFromCloud();
 }
-
-// LOGIN UTILS
-const btnLoginCollab = document.getElementById('btnConfirmCollabLogin');
-if(btnLoginCollab) {
-    btnLoginCollab.addEventListener('click', async () => {
-        const email = document.getElementById('collabEmailInput').value.trim();
-        const pass = document.getElementById('collabPassInput').value;
-        if(!email || !pass) return alert("Preencha tudo");
-        try {
-            await signInWithEmailAndPassword(auth, email, pass);
-            document.getElementById('collabLoginModal').classList.add('hidden');
-        } catch(e) { alert("Erro login: " + e.message); }
-    });
-}
-// Enter Key Support
-document.getElementById('collabPassInput')?.addEventListener('keypress', e => {
-    if(e.key === 'Enter') document.getElementById('btnConfirmCollabLogin').click();
-});
 
 document.addEventListener('DOMContentLoaded', initGlobal);
