@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portal do Colaborador | Cronos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -10,58 +9,22 @@
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        cronos: {
-                            bg: '#0F1020',
-                            card: '#1A1C2E',
-                            border: '#2E3250',
-                        }
-                    },
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'fade-in': 'fadeIn 0.3s ease-out forwards' },
-                    keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0', transform: 'scale(0.95)' },
-                            '100%': { opacity: '1', transform: 'scale(1)' },
-                        }
-                    }
-                }
-            }
+            theme: { extend: { colors: { cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250' } }, fontFamily: { sans: ['Inter', 'sans-serif'] } } }
         }
     </script>
     <style>
         body { background-color: #0F1020; color: #E2E8F0; }
-        .login-input {
-            background-color: #161828;
-            border-color: #2E3250;
-            color: white;
-        }
-        .login-input:focus {
-            border-color: #38BDF8; /* Azul claro */
-            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
-        }
-        .btn-collab {
-            background: linear-gradient(135deg, #0284c7 0%, #38BDF8 100%);
-            transition: all 0.3s ease;
-        }
-        .btn-collab:hover {
-            opacity: 0.9;
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
-            transform: translateY(-1px);
-        }
+        .login-input { background-color: #161828; border-color: #2E3250; color: white; }
+        .login-input:focus { border-color: #38BDF8; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2); }
+        .btn-collab { background: linear-gradient(135deg, #0284c7 0%, #38BDF8 100%); transition: all 0.3s ease; }
     </style>
 </head>
 <body class="h-screen flex items-center justify-center p-4 relative overflow-hidden">
-    
     <div class="absolute top-0 left-0 w-full h-full pointer-events-none z-0">
         <div class="absolute top-[-10%] right-[-10%] w-96 h-96 bg-sky-900/20 rounded-full blur-3xl"></div>
         <div class="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-blue-900/20 rounded-full blur-3xl"></div>
     </div>
-
-    <div class="bg-cronos-card border border-cronos-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 backdrop-blur-sm animate-fade-in">
-        
+    <div class="bg-cronos-card border border-cronos-border rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 backdrop-blur-sm">
         <div class="w-full p-8 md:p-10">
             <div class="text-center mb-8">
                 <div class="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-sky-500/20">
@@ -70,50 +33,33 @@
                 <h1 class="text-2xl font-bold text-white mb-1">Área do Colaborador</h1>
                 <p class="text-sm text-gray-400">Acesse sua escala e plantões.</p>
             </div>
-
             <form id="loginCollabForm" class="space-y-5">
                 <div>
                     <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Seu E-mail</label>
                     <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-envelope text-gray-500"></i>
-                        </div>
-                        <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="voce@empresa.com" required>
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-envelope text-gray-500"></i></div>
+                        <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input" placeholder="voce@empresa.com" required>
                     </div>
                 </div>
-
                 <div>
                     <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Senha</label>
                     <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-lock text-gray-500"></i>
-                        </div>
-                        <input type="password" id="passwordInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input placeholder-gray-600" placeholder="••••••••" required>
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-lock text-gray-500"></i></div>
+                        <input type="password" id="passwordInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input" placeholder="••••••••" required>
                     </div>
                 </div>
-
-                <div id="loginError" class="hidden bg-red-900/20 border border-red-500/30 text-red-400 text-sm p-3 rounded-lg flex items-center">
-                    <i class="fas fa-exclamation-circle mr-2"></i>
-                    <span id="errorText">Erro de autenticação.</span>
-                </div>
-
-                <button type="submit" id="btnLogin" class="w-full btn-collab text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-4">
-                    <span>Acessar Escala</span>
-                    <i class="fas fa-sign-in-alt"></i>
-                </button>
+                <div id="loginError" class="hidden bg-red-900/20 border border-red-500/30 text-red-400 text-sm p-3 rounded-lg flex items-center"><i class="fas fa-exclamation-circle mr-2"></i><span id="errorText">Erro.</span></div>
+                <button type="submit" id="btnLogin" class="w-full btn-collab text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-4"><span>Acessar Escala</span><i class="fas fa-sign-in-alt"></i></button>
             </form>
-
             <div class="mt-8 text-center border-t border-gray-800 pt-6">
-                <a href="index.html" class="text-sm text-gray-500 hover:text-sky-400 font-medium transition-colors">
-                    <i class="fas fa-arrow-left mr-1"></i> Voltar para o início
-                </a>
+                <a href="index.html" class="text-sm text-gray-500 hover:text-sky-400 font-medium transition-colors"><i class="fas fa-arrow-left mr-1"></i> Voltar</a>
             </div>
         </div>
     </div>
-
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
@@ -123,37 +69,41 @@
             messagingSenderId: "117221956502",
             appId: "1:117221956502:web:e5a7f051daf3306b501bb7"
         };
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app);
 
         document.getElementById('loginCollabForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
             const pass = document.getElementById('passwordInput').value;
-            const errorDiv = document.getElementById('loginError');
             const btn = document.getElementById('btnLogin');
+            const errorDiv = document.getElementById('loginError');
 
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Entrando...';
-            btn.disabled = true;
-            btn.classList.add('opacity-75');
+            btn.innerHTML = 'Verificando Cadastro...'; btn.disabled = true;
             errorDiv.classList.add('hidden');
 
             try {
-                await signInWithEmailAndPassword(auth, email, pass);
-                window.location.href = "index.html"; // Redireciona para o app principal
-            } catch (error) {
-                console.error("Erro login:", error);
-                const errorText = document.getElementById('errorText');
-                if(error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-                    errorText.textContent = "E-mail ou senha incorretos.";
+                // 1. Autenticação Básica
+                const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+                const user = userCredential.user;
+
+                // 2. Verificação de Role (colaboradores)
+                const docRef = doc(db, "colaboradores", user.uid);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    window.location.href = "index.html";
                 } else {
-                    errorText.textContent = "Erro ao conectar.";
+                    await signOut(auth); // Desloga se não for colaborador
+                    throw new Error("Acesso negado: Usuário não consta na base de colaboradores.");
                 }
+
+            } catch (error) {
+                console.error(error);
                 errorDiv.classList.remove('hidden');
-                btn.innerHTML = '<span>Acessar Escala</span><i class="fas fa-sign-in-alt"></i>';
-                btn.disabled = false;
-                btn.classList.remove('opacity-75');
+                document.getElementById('errorText').textContent = error.message.includes("Acesso negado") ? "Cadastro de colaborador não encontrado." : "Acesso inválido.";
+                btn.innerHTML = 'Acessar Escala'; btn.disabled = false;
             }
         });
     </script>
