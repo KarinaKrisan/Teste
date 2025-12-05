@@ -45,7 +45,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     try {
-        // 1. Check Admin
         const adminRef = doc(db, "administradores", user.uid);
         const adminSnap = await getDoc(adminRef);
 
@@ -55,7 +54,6 @@ onAuthStateChanged(auth, async (user) => {
             setupAdminUI();
             initNotificationsListener('admin');
         } else {
-            // 2. Check Colaborador
             const collabRef = doc(db, "colaboradores", user.uid);
             const collabSnap = await getDoc(collabRef);
             
@@ -77,7 +75,6 @@ function setupAdminUI() {
     adminToolbar.classList.remove('hidden');
     document.getElementById('adminEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
-    
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
     switchTab('daily');
@@ -88,10 +85,8 @@ function setupCollaboratorUI(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
-
     document.getElementById('tabDaily').classList.add('hidden');
     document.getElementById('employeeSelectContainer').classList.add('hidden');
-
     switchTab('personal');
 }
 
@@ -176,7 +171,6 @@ function updatePersonalView(name) {
     document.getElementById('personalInfoCard').innerHTML = `<h2 class="text-white text-xl font-bold">${name}</h2>`;
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
-    
     updateWeekendTable(name);
 }
 
@@ -225,7 +219,7 @@ function openRequestModal(name, dayIndex) {
         if(n !== name) targetSel.innerHTML += `<option value="${n}">${n}</option>`;
     });
 
-    // Reset default visuals
+    // Reset default
     document.getElementById('reqType').value = 'troca_dia_trabalho';
     document.getElementById('swapTargetContainer').classList.remove('hidden');
 
@@ -236,13 +230,8 @@ function openRequestModal(name, dayIndex) {
 document.getElementById('reqType').addEventListener('change', (e) => {
     const val = e.target.value;
     const swapContainer = document.getElementById('swapTargetContainer');
-    
-    // Mostra o campo se for troca de folga ou troca de dia de trabalho
-    if(val === 'troca_folga' || val === 'troca_dia_trabalho') {
-        swapContainer.classList.remove('hidden');
-    } else {
-        swapContainer.classList.add('hidden');
-    }
+    if(val === 'troca_folga' || val === 'troca_dia_trabalho') swapContainer.classList.remove('hidden');
+    else swapContainer.classList.add('hidden');
 });
 
 // ENVIO DE SOLICITAÇÃO
@@ -311,8 +300,7 @@ function initNotificationsListener(role) {
         const labels = {
             'troca_folga': 'Troca de Folga',
             'troca_dia_trabalho': 'Troca de Dia Trabalhado',
-            'troca_turno': 'Troca de Turno',
-            'justificativa': 'Justificativa'
+            'troca_turno': 'Troca de Turno'
         };
 
         snapshot.forEach(docSnap => {
@@ -354,7 +342,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             await updateDoc(reqRef, { status: 'approved' });
             
             if (targetName) {
-                // Swap logic (works for both Folga and Dia Trabalhado)
+                // Swap logic
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = targetStatus;
@@ -362,7 +350,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
                 rawSchedule[targetName].calculatedSchedule = scheduleData[targetName].schedule;
             } else {
-                // Simple toggle for Shift Change
+                // Simple toggle
                 const curr = scheduleData[requesterName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T';
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
@@ -388,7 +376,6 @@ function initGlobal() {
     initSelect();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    // Month selector
     const header = document.getElementById('monthSelectorContainer');
     if(!document.getElementById('monthSel')) {
         const sel = document.createElement('select'); sel.id='monthSel';
