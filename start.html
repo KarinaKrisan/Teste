@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bem-vindo ao Cronos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { cronos: { bg: '#0F1020', card: '#1A1C2E' } },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: { 'float': 'float 6s ease-in-out infinite' },
+                    keyframes: { float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-20px)' } } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0F1020; color: white; }
+        .glass-panel {
+            background: rgba(26, 28, 46, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    
+    <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[100px] animate-float"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-900/20 rounded-full blur-[100px] animate-float" style="animation-delay: 2s"></div>
+    </div>
+
+    <div class="z-10 w-full max-w-md space-y-8 text-center">
+        <div class="mb-12">
+            <h1 class="text-6xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-orange-400 tracking-tighter drop-shadow-lg">
+                CRONOS
+            </h1>
+            <div class="h-1 w-24 bg-gradient-to-r from-purple-500 to-orange-500 mx-auto rounded-full mb-4"></div>
+            <p class="text-gray-400 font-medium tracking-widest text-sm">SUA OPERAÇÃO NO TEMPO CERTO.</p>
+        </div>
+
+        <div class="space-y-4">
+            <a href="login-colaborador.html" class="glass-panel group block p-6 rounded-2xl hover:bg-sky-900/20 hover:border-sky-500/50 transition-all duration-300 transform hover:-translate-y-1 shadow-lg cursor-pointer relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-sky-500/0 via-sky-500/5 to-sky-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                <div class="flex items-center justify-between relative z-10">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-sky-500/10 flex items-center justify-center text-sky-400 border border-sky-500/20 group-hover:scale-110 transition-transform">
+                            <i class="fas fa-user-astronaut text-xl"></i>
+                        </div>
+                        <div class="text-left">
+                            <h3 class="font-bold text-lg text-white group-hover:text-sky-300 transition-colors">Sou Colaborador</h3>
+                            <p class="text-xs text-gray-500">Visualizar minha escala</p>
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-right text-gray-600 group-hover:text-sky-400 transition-colors"></i>
+                </div>
+            </a>
+
+            <a href="login-admin.html" class="glass-panel group block p-6 rounded-2xl hover:bg-purple-900/20 hover:border-purple-500/50 transition-all duration-300 transform hover:-translate-y-1 shadow-lg cursor-pointer relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/5 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                <div class="flex items-center justify-between relative z-10">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 border border-purple-500/20 group-hover:scale-110 transition-transform">
+                            <i class="fas fa-shield-alt text-xl"></i>
+                        </div>
+                        <div class="text-left">
+                            <h3 class="font-bold text-lg text-white group-hover:text-purple-300 transition-colors">Área Admin</h3>
+                            <p class="text-xs text-gray-500">Gestão e aprovações</p>
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-right text-gray-600 group-hover:text-purple-400 transition-colors"></i>
+                </div>
+            </a>
+        </div>
+
+        <footer class="mt-12 text-xs text-gray-600">
+            &copy; 2025 Cronos System v2.0
+        </footer>
+    </div>
+</body>
+</html>
