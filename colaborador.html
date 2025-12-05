@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cronos | Área do Colaborador</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250', primary: '#7C3AED', accent: '#F97316' }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: { 'fade-in-up': 'fadeInUp 0.5s ease-out forwards' },
+                    keyframes: { fadeInUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } } }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styless.css"> 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body class="text-gray-300 relative font-sans antialiased bg-[#0F1020] h-screen overflow-hidden flex flex-col">
+
+    <div id="collabToolbar" class="fixed bottom-6 inset-x-0 z-50 flex justify-center pointer-events-none">
+        <div class="pointer-events-auto w-[90%] max-w-2xl bg-[#1A1C2E]/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-cronos-border p-2 pl-5 flex justify-between items-center ring-1 ring-white/5 animate-fade-in-up">
+            <div class="flex flex-col justify-center">
+                <span class="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-0.5 flex items-center gap-1.5">
+                    <i class="fas fa-user-astronaut"></i> Colaborador
+                </span>
+                <span id="collabNameDisplay" class="text-xs text-gray-300 font-medium truncate max-w-[150px]">Carregando...</span>
+            </div>
+            <div class="flex gap-2">
+                <button id="btnCollabInbox" class="relative bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all border border-gray-700 flex items-center gap-2">
+                    <i class="fas fa-inbox"></i> <span class="hidden md:inline">Solicitações</span>
+                </button>
+                <button id="btnCollabLogout" class="bg-gray-800 hover:bg-red-900/20 hover:text-red-400 text-gray-400 px-3.5 py-2.5 rounded-xl transition-all border border-transparent hover:border-red-500/20" title="Sair">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-4 max-w-7xl mt-4 flex-1 overflow-y-auto custom-scrollbar pb-32">
+        
+        <header class="mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-center md:text-left">
+                <h1 class="text-3xl md:text-4xl font-extrabold mb-1 tracking-tight text-gradient">CRONOS</h1>
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-widest">Área do Colaborador</p>
+            </div>
+            <div id="monthSelectorContainer" class="w-full md:w-auto"></div>
+        </header>
+
+        <nav class="flex flex-wrap gap-2 p-1 mb-6 bg-cronos-card/50 backdrop-blur-sm rounded-xl border border-cronos-border justify-center md:justify-start w-fit mx-auto md:mx-0">
+            <button data-tab="daily" class="tab-button active flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200">
+                <i class="fas fa-chart-pie"></i> Visão Diária
+            </button>
+            <button data-tab="personal" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200">
+                <i class="fas fa-users-cog"></i> Minha Escala
+            </button>
+        </nav>
+
+        <div id="dailyView" class="tab-content active space-y-6">
+            <section class="cronos-card p-6 rounded-3xl border border-cronos-border/50">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-bold text-gray-500 uppercase">Status da Equipe - <span id="currentDateLabel" class="text-white capitalize">--</span></h2>
+                </div>
+                <div class="bg-cronos-bg/50 p-4 rounded-xl border border-cronos-border/50 mb-6">
+                    <input id="dateSlider" type="range" min="1" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-[#0F1020] p-4 rounded-xl border border-green-900/30"><p class="text-xs text-gray-400 font-bold uppercase">Operando</p><p id="kpiWorking" class="text-2xl font-bold text-white">0</p></div>
+                    <div class="bg-[#0F1020] p-4 rounded-xl border border-fuchsia-900/30"><p class="text-xs text-gray-400 font-bold uppercase">Encerrado</p><p id="kpiOffShift" class="text-2xl font-bold text-white">0</p></div>
+                    <div class="bg-[#0F1020] p-4 rounded-xl border border-yellow-900/30"><p class="text-xs text-gray-400 font-bold uppercase">Folga</p><p id="kpiOff" class="text-2xl font-bold text-white">0</p></div>
+                    <div class="bg-[#0F1020] p-4 rounded-xl border border-red-900/30"><p class="text-xs text-gray-400 font-bold uppercase">Férias</p><p id="kpiVacation" class="text-2xl font-bold text-white">0</p></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-[#1A1C2E] border border-green-900/50 rounded-2xl h-80 flex flex-col">
+                        <div class="bg-green-900/20 p-3 border-b border-green-900/30 text-green-400 font-bold text-xs uppercase">Trabalhando</div>
+                        <ul id="listWorking" class="p-2 overflow-y-auto flex-1 custom-scrollbar space-y-1"></ul>
+                    </div>
+                    <div class="bg-[#1A1C2E] border border-fuchsia-900/50 rounded-2xl h-80 flex flex-col">
+                        <div class="bg-fuchsia-900/20 p-3 border-b border-fuchsia-900/30 text-fuchsia-400 font-bold text-xs uppercase">Exp. Encerrado</div>
+                        <ul id="listOffShift" class="p-2 overflow-y-auto flex-1 custom-scrollbar space-y-1"></ul>
+                    </div>
+                    <div class="bg-[#1A1C2E] border border-yellow-900/50 rounded-2xl h-80 flex flex-col">
+                        <div class="bg-yellow-900/20 p-3 border-b border-yellow-900/30 text-yellow-500 font-bold text-xs uppercase">Folga</div>
+                        <ul id="listOff" class="p-2 overflow-y-auto flex-1 custom-scrollbar space-y-1"></ul>
+                    </div>
+                    <div class="bg-[#1A1C2E] border border-red-900/50 rounded-2xl h-80 flex flex-col">
+                        <div class="bg-red-900/20 p-3 border-b border-red-900/30 text-red-400 font-bold text-xs uppercase">Férias</div>
+                        <ul id="listVacation" class="p-2 overflow-y-auto flex-1 custom-scrollbar space-y-1"></ul>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="personalView" class="tab-content hidden space-y-6">
+            
+            <section class="cronos-card p-6 rounded-3xl">
+                <div id="personalInfoCard" class="hidden mb-8"></div>
+                
+                <select id="employeeSelect" class="hidden"></select>
+
+                <div id="calendarContainer" class="hidden">
+                    <div class="grid grid-cols-7 gap-1 mb-2 text-center font-bold text-gray-500 text-xs uppercase tracking-wider hidden md:grid">
+                        <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+                    </div>
+                    <div id="calendarGrid" class="calendar-grid-container rounded-xl overflow-hidden border border-cronos-border"></div>
+                </div>
+            </section>
+
+            <section class="cronos-card p-6 rounded-3xl">
+                <div class="mb-6 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-500">
+                        <i class="fas fa-calendar-week"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-white">Meus Plantões de FDS</h2>
+                </div>
+                <div id="weekendPlantaoContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </section>
+        </div>
+
+    </div>
+
+    <div id="requestModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-[#1A1C2E] border border-[#2E3250] rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+            <button id="btnCloseRequestModal" class="absolute top-4 right-4 text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+            <h3 class="text-lg font-bold text-white mb-6 text-center">Solicitar Alteração</h3>
+            
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button class="req-type-btn active p-2 rounded border border-purple-500 bg-purple-500/20 text-white text-xs font-bold" data-type="troca_folga">Trocar Folga</button>
+                <button class="req-type-btn p-2 rounded border border-[#2E3250] bg-[#0F1020] text-gray-400 text-xs font-bold" data-type="troca_dia">Trocar Dia</button>
+                <button class="req-type-btn p-2 rounded border border-[#2E3250] bg-[#0F1020] text-gray-400 text-xs font-bold" data-type="mudanca_turno">Mudar Turno</button>
+            </div>
+
+            <div id="swapFields">
+                <label class="text-xs font-bold text-gray-500 uppercase">Trocar com quem?</label>
+                <select id="targetPeerSelect" class="w-full mt-1 p-3 bg-[#0F1020] border border-[#2E3250] rounded-lg text-white"></select>
+            </div>
+            <div id="shiftFields" class="hidden">
+                <label class="text-xs font-bold text-gray-500 uppercase">Novo Turno</label>
+                <input type="text" id="newShiftInput" class="w-full mt-1 p-3 bg-[#0F1020] border border-[#2E3250] rounded-lg text-white">
+            </div>
+            <button id="btnSubmitRequest" class="w-full mt-6 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg">Enviar</button>
+        </div>
+    </div>
+
+    <div id="notificationDrawer" class="fixed inset-y-0 right-0 w-full max-w-sm bg-[#1A1C2E] shadow-2xl transform translate-x-full transition-transform duration-300 z-[80] border-l border-[#2E3250]">
+        <div class="p-5 border-b border-[#2E3250] flex justify-between items-center bg-[#0F1020]">
+            <h3 class="font-bold text-white flex items-center gap-2"><i class="fas fa-inbox text-purple-500"></i> Solicitações</h3>
+            <button id="btnCloseDrawer" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3" id="notificationList"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
