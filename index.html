@@ -160,16 +160,18 @@
                 <div>
                     <label class="text-xs font-bold text-gray-400 uppercase block mb-2">Tipo de Solicitação</label>
                     <select id="reqType" class="w-full bg-[#0F1020] border border-cronos-border text-white text-sm rounded-lg p-2.5 outline-none focus:border-sky-500">
-                        <option value="troca_turno">Trocar Turno (Líder Aprova)</option>
-                        <option value="troca_folga">Trocar com Colega (2 Etapas)</option>
-                        <option value="justificativa">Justificativa</option>
+                        <option value="troca_dia_trabalho">Troca de Dia Trabalhado (Com Colega)</option>
+                        <option value="troca_folga">Troca de Folga (Com Colega)</option>
+                        <option value="troca_turno">Troca de Turno (Líder Aprova)</option>
+                        <option value="justificativa">Justificativa de Ausência</option>
                     </select>
                 </div>
-                <div id="swapTargetContainer" class="hidden animate-fade-in">
+                <div id="swapTargetContainer" class="animate-fade-in">
                     <label class="text-xs font-bold text-gray-400 uppercase block mb-2">Trocar com quem?</label>
                     <select id="reqTargetEmployee" class="w-full bg-[#0F1020] border border-cronos-border text-white text-sm rounded-lg p-2.5 outline-none focus:border-sky-500">
                         <option value="">Selecione o colega...</option>
                     </select>
+                    <p class="text-[10px] text-gray-500 mt-1">*O colega precisa aprovar antes do líder.</p>
                 </div>
                 <div>
                     <label class="text-xs font-bold text-gray-400 uppercase block mb-2">Obs / Motivo</label>
