@@ -15,9 +15,9 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado
+// Estado Global
 let isAdmin = false;
-let hasUnsavedChanges = false; // Controle de salvamento
+let hasUnsavedChanges = false;
 let currentUserName = null;
 let currentUserProfile = null; 
 let scheduleData = {}; 
@@ -76,7 +76,6 @@ function setupAdminUI() {
     adminToolbar.classList.remove('hidden');
     document.getElementById('adminEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
-    
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
@@ -117,52 +116,32 @@ async function loadDataFromCloud() {
     }
 }
 
-// --- FUNÇÃO DE SALVAMENTO MANUAL (Para o Líder) ---
+// Salvamento Manual
 async function saveToCloud() {
     if(!isAdmin) return;
     const btn = document.getElementById('btnSaveCloud');
     const status = document.getElementById('saveStatus');
-    
-    // Feedback Visual
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> ...';
     btn.classList.add('opacity-75', 'cursor-not-allowed');
-    
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
-    
     try {
         await setDoc(doc(db, "escalas", docId), rawSchedule, { merge: true });
-        
-        // Sucesso
         hasUnsavedChanges = false;
         status.textContent = "Sincronizado";
         status.className = "text-xs text-gray-300 font-medium";
-        
-        // Remove aviso de saída
         window.onbeforeunload = null;
-
         setTimeout(() => {
             btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
             btn.classList.remove('opacity-75', 'cursor-not-allowed');
         }, 1000);
-        
     } catch (e) {
-        console.error("Erro ao salvar:", e);
-        alert("Erro ao salvar alterações! Verifique sua conexão.");
-        btn.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> Erro';
+        alert("Erro ao salvar!");
+        btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro';
     }
 }
-
-// Vincula o botão de salvar
 const btnSave = document.getElementById('btnSaveCloud');
 if(btnSave) btnSave.addEventListener('click', saveToCloud);
-
-// Proteção contra saída sem salvar
-window.addEventListener('beforeunload', (e) => {
-    if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-    }
-});
+window.addEventListener('beforeunload', (e) => { if (hasUnsavedChanges) { e.preventDefault(); e.returnValue = ''; } });
 
 function processScheduleData() {
     scheduleData = {};
@@ -191,17 +170,11 @@ window.switchSubTab = function(type) {
     Object.values(btnMap).forEach(id => document.getElementById(id).classList.remove('sub-tab-active'));
     const activeBtn = document.getElementById(btnMap[type]);
     if(activeBtn) activeBtn.classList.add('sub-tab-active');
-
     window.activeRequestType = type; 
-    document.getElementById('btnNewRequestLabel').textContent = { 
-        'troca_dia_trabalho': 'Solicitar Troca de Dia', 
-        'troca_folga': 'Solicitar Troca de Folga', 
-        'troca_turno': 'Solicitar Troca de Turno' 
-    }[type];
-
+    document.getElementById('btnNewRequestLabel').textContent = { 'troca_dia_trabalho': 'Solicitar Troca de Dia', 'troca_folga': 'Solicitar Troca de Folga', 'troca_turno': 'Solicitar Troca de Turno' }[type];
     initRequestsTabListener();
 };
-window.activeRequestType = 'troca_dia_trabalho'; // Default
+window.activeRequestType = 'troca_dia_trabalho';
 
 document.querySelectorAll('.tab-button').forEach(b => {
     b.addEventListener('click', () => {
@@ -267,13 +240,33 @@ function updatePersonalView(name) {
     updateWeekendTable(name);
 }
 
+// === GRID MENSAL RESPONSIVO ===
 function updateCalendar(name, schedule) {
     const grid = document.getElementById('calendarGrid');
     grid.innerHTML = '';
-    const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
-    for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
+    
+    // Calcula o "offset" (dias vazios antes do dia 1)
+    const firstDay = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
+    
+    // Adiciona células vazias para alinhar o dia 1 ao dia da semana correto
+    for(let i=0; i<firstDay; i++) {
+        grid.innerHTML += '<div class="calendar-cell opacity-0 pointer-events-none"></div>';
+    }
+
+    // Renderiza os dias reais
     schedule.forEach((st, i) => {
-        grid.innerHTML += `<div onclick="handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group"><span class="text-gray-500 text-xs">${i+1}</span><div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div></div>`;
+        // Classes de estilo para status
+        let statusClass = `status-${st}`;
+        
+        // Verifica se é "Hoje"
+        const isToday = (selectedMonthObj.year === currentDateObj.getFullYear() && selectedMonthObj.month === currentDateObj.getMonth() && (i + 1) === new Date().getDate());
+        const todayClass = isToday ? 'ring-2 ring-purple-500' : '';
+
+        grid.innerHTML += `
+            <div onclick="handleCellClick('${name}',${i})" class="calendar-cell ${statusClass} ${todayClass}">
+                <div class="day-number">${i+1}</div>
+                <div class="day-status-badge">${statusMap[st] ? statusMap[st].substring(0,3) : st}</div>
+            </div>`;
     });
 }
 
@@ -328,7 +321,6 @@ window.handleCellClick = function(name, dayIndex) {
         emp.schedule[dayIndex] = next;
         rawSchedule[name].calculatedSchedule = emp.schedule;
         
-        // Marca que houve alteração para o aviso de saída
         hasUnsavedChanges = true;
         document.getElementById('saveStatus').textContent = "Alterado (Não Salvo)*";
         document.getElementById('saveStatus').classList.add('text-orange-400');
@@ -376,25 +368,19 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     const type = document.getElementById('reqType').value;
     const targetEmp = document.getElementById('reqTargetEmployee').value;
     let name = document.getElementById('reqEmployeeName').value;
-    
     let idx = parseInt(document.getElementById('reqDateIndex').value);
     const manualDate = document.getElementById('reqDateManual').value;
-    
     if (document.getElementById('reqDateDisplay').classList.contains('hidden')) {
         if (!manualDate) { alert("Selecione a data."); return; }
         const dParts = manualDate.split('-');
         idx = parseInt(dParts[2]) - 1;
         name = currentUserName;
     }
-
     const reason = document.getElementById('reqReason').value;
     const needsPeer = (type !== 'troca_turno');
-
     if(needsPeer && !targetEmp) { alert("Selecione o colega."); return; }
     if(!reason) { alert("Informe o motivo."); return; }
-
     btn.innerHTML = 'Enviando...'; btn.disabled = true;
-
     try {
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
         await addDoc(collection(db, "solicitacoes"), {
@@ -420,30 +406,22 @@ function initRequestsTabListener() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", currentUserName));
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName));
-
     const renderList = (snap, containerId, isReceived) => {
         const list = document.getElementById(containerId);
         list.innerHTML = '';
-        let hasItems = false;
         snap.forEach(d => {
             const r = d.data();
             if(r.type === window.activeRequestType) {
-                hasItems = true;
                 const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
                 const colorMap = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
-                
                 let btns = '';
                 if(isReceived && r.status === 'pending_peer') {
                     btns = `<div class="flex gap-2 mt-2"><button onclick="window.handleRequest('${d.id}', 'peer_accept')" class="flex-1 bg-sky-600/30 text-sky-400 text-xs py-1 rounded">Aceitar</button><button onclick="window.handleRequest('${d.id}', 'reject')" class="flex-1 bg-red-600/30 text-red-400 text-xs py-1 rounded">Recusar</button></div>`;
                 }
-
                 list.innerHTML += `
                     <div class="bg-[#0F1020] p-3 rounded-lg border border-[#2E3250] mb-2">
                         <div class="flex justify-between items-start">
-                            <div>
-                                <span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span>
-                                <div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div>
-                            </div>
+                            <div><span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span><div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div></div>
                             <span class="text-[10px] font-bold uppercase ${colorMap[r.status]}">${statusMap[r.status]}</span>
                         </div>
                         <p class="text-xs text-gray-500 italic mt-1">"${r.reason}"</p>
@@ -451,7 +429,7 @@ function initRequestsTabListener() {
                     </div>`;
             }
         });
-        if(!hasItems) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
+        if(list.innerHTML==='') list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
     };
     onSnapshot(qSent, (snap) => renderList(snap, 'sentRequestsList', false));
     onSnapshot(qReceived, (snap) => renderList(snap, 'receivedRequestsList', true));
@@ -464,13 +442,11 @@ function initNotificationsListener(role) {
     let q;
     if (role === 'admin') q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("status", "==", "pending_leader"));
     else q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName), where("status", "==", "pending_peer"));
-
     if(notifUnsubscribe) notifUnsubscribe();
     notifUnsubscribe = onSnapshot(q, (snap) => {
         const c = snap.size;
         document.getElementById('globalBadge').textContent = c;
         document.getElementById('globalBadge').className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
-        
         const list = document.getElementById('globalList');
         list.innerHTML = '';
         if(c === 0) list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>';
@@ -496,8 +472,6 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
         } 
         else if (action === 'leader_approve') {
             await updateDoc(reqRef, { status: 'approved' });
-            
-            // 1. Atualiza visual local
             if (targetName) {
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
@@ -511,7 +485,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
             }
             
-            // 2. SALVA NO FIRESTORE (AUTOMÁTICO PARA APROVAÇÕES)
+            // SALVA AUTOMATICAMENTE NO DB APÓS APROVAÇÃO
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
             
@@ -525,8 +499,25 @@ function initGlobal() {
     initSelect();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    // ... Month selector logic maintained ...
-    loadDataFromCloud();
+    const header = document.getElementById('monthSelectorContainer');
+    if(!document.getElementById('monthSel')) {
+        const sel = document.createElement('select'); sel.id='monthSel';
+        sel.className = 'bg-[#1A1C2E] text-white text-sm px-4 py-2 rounded-lg border border-[#2E3250] outline-none';
+        availableMonths.forEach(m => {
+            const opt = document.createElement('option'); opt.value = `${m.year}-${m.month}`;
+            opt.textContent = `${monthNames[m.month]}/${m.year}`;
+            if(m.month === selectedMonthObj.month && m.year === selectedMonthObj.year) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', e=>{ const [y,mo] = e.target.value.split('-').map(Number); selectedMonthObj={year:y, month:mo}; loadDataFromCloud(); });
+        header.appendChild(sel);
+    }
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
-function initSelect() { /*...*/ }
+function initSelect() {
+    const s = document.getElementById('employeeSelect');
+    if(!s) return;
+    s.innerHTML = '<option value="">Selecione...</option>';
+    Object.keys(scheduleData).sort().forEach(n => { s.innerHTML += `<option value="${n}">${n}</option>`; });
+    s.onchange = (e) => updatePersonalView(e.target.value);
+}
