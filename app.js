@@ -192,23 +192,23 @@ function updateDailyView() {
     
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
-    let vacationPills = ''; // String para as pílulas de férias
-    let totalVacation = 0; // Contador de férias no mês
+    let vacationPills = '';
+    let totalVacation = 0;
 
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         const st = emp.schedule[currentDay-1] || 'F';
         
-        // --- LÓGICA NORMAL DIÁRIA ---
+        // Lista Normal
         const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
         
         if(st==='T') { w++; lists.w+=row; }
         else if(st.includes('OFF')) { os++; lists.os+=row; }
-        else if(st!=='FE') { o++; lists.o+=row; } // 'FE' é ignorado aqui, pois será tratado no bloco abaixo
+        else if(st!=='FE') { o++; lists.o+=row; }
 
-        // --- LÓGICA DE FÉRIAS NO MÊS (NOVA) ---
-        // Verifica se o funcionário tem 'FE' em QUALQUER dia do mês
-        if(emp.schedule.includes('FE')) {
+        // LÓGICA DE FÉRIAS AJUSTADA:
+        // Apenas se o status DO DIA ATUAL for 'FE'
+        if(st === 'FE') {
             totalVacation++;
             vacationPills += `<span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-900/30 text-red-400 border border-red-500/30 shadow-sm">${name}</span>`;
         }
@@ -216,14 +216,13 @@ function updateDailyView() {
 
     document.getElementById('kpiWorking').textContent=w; 
     document.getElementById('kpiOff').textContent=o;
-    document.getElementById('kpiVacation').textContent = totalVacation; // Atualiza KPI com total do mês
+    document.getElementById('kpiVacation').textContent = totalVacation;
 
     document.getElementById('listWorking').innerHTML=lists.w; 
     document.getElementById('listOffShift').innerHTML=lists.os;
     document.getElementById('listOff').innerHTML=lists.o;
     
-    // Injeta as pílulas no card de Férias
-    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias este mês.</span>';
+    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias hoje.</span>';
 }
 
 function updatePersonalView(name) {
@@ -486,10 +485,10 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             }
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
-            alert("Aprovação realizada e salva no banco de dados.");
+            alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
-    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
+    } catch (e) { console.error(e); alert("Erro ao processar."); }
 }
 
 function initGlobal() {
