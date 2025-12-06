@@ -15,7 +15,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado
+// Estado Global
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -183,7 +183,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// --- VIEWS ---
+// --- VIEWS (LISTA VERTICAL DE PÍLULAS) ---
 function updateDailyView() {
     if(!isAdmin) return;
     const dateLabel = document.getElementById('currentDateLabel');
@@ -195,32 +195,32 @@ function updateDailyView() {
     let vacationPills = '';
     let totalVacation = 0;
 
-    // ESTILO BASE DA PÍLULA
-    const pillBase = "inline-block px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm transition-all hover:scale-105 cursor-default";
+    // ESTILO DE PÍLULA ESTICADA (Lista Vertical)
+    const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm transition-all hover:scale-[1.02] cursor-default";
 
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         const st = emp.schedule[currentDay-1] || 'F';
         
-        // TRABALHANDO (VERDE)
+        // TRABALHANDO
         if(st === 'T') {
             w++;
-            lists.w += `<span class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30">${name}</span>`;
+            lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
         }
-        // ENCERRADO (ROXO/ROSA)
+        // ENCERRADO
         else if(st.includes('OFF')) {
             os++;
-            lists.os += `<span class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30">${name}</span>`;
+            lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
         }
-        // FÉRIAS (VERMELHO) - Dinâmico por dia
+        // FÉRIAS (Dinâmico)
         else if(st === 'FE') {
             totalVacation++;
-            vacationPills += `<span class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30">${name}</span>`;
+            vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
         }
-        // FOLGA (AMARELO) - Ignora FE aqui
+        // FOLGA
         else {
             o++;
-            lists.o += `<span class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30">${name}</span>`;
+            lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
         }
     });
 
@@ -229,11 +229,10 @@ function updateDailyView() {
     document.getElementById('kpiVacation').textContent = totalVacation;
     document.getElementById('kpiOffShift').textContent = os;
 
-    // Preenche as DIVs com as pílulas
-    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém trabalhando.</span>';
-    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém encerrado.</span>';
-    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de folga.</span>';
-    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias hoje.</span>';
+    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
+    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
+    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
+    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
     
     updateDailyChartDonut(w, o, os, totalVacation);
 }
