@@ -15,7 +15,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado Global
+// Estado
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -189,18 +189,41 @@ function updateDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
     dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
+    
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
+    let vacationPills = ''; // String para as pílulas de férias
+    let totalVacation = 0; // Contador de férias no mês
+
     Object.keys(scheduleData).forEach(name=>{
-        const st = scheduleData[name].schedule[currentDay-1] || 'F';
+        const emp = scheduleData[name];
+        const st = emp.schedule[currentDay-1] || 'F';
+        
+        // --- LÓGICA NORMAL DIÁRIA ---
         const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
+        
         if(st==='T') { w++; lists.w+=row; }
-        else if(st==='FE') { v++; lists.v+=row; }
         else if(st.includes('OFF')) { os++; lists.os+=row; }
-        else { o++; lists.o+=row; }
+        else if(st!=='FE') { o++; lists.o+=row; } // 'FE' é ignorado aqui, pois será tratado no bloco abaixo
+
+        // --- LÓGICA DE FÉRIAS NO MÊS (NOVA) ---
+        // Verifica se o funcionário tem 'FE' em QUALQUER dia do mês
+        if(emp.schedule.includes('FE')) {
+            totalVacation++;
+            vacationPills += `<span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-900/30 text-red-400 border border-red-500/30 shadow-sm">${name}</span>`;
+        }
     });
-    document.getElementById('kpiWorking').textContent=w; document.getElementById('kpiOff').textContent=o;
-    document.getElementById('listWorking').innerHTML=lists.w; document.getElementById('listOff').innerHTML=lists.o;
+
+    document.getElementById('kpiWorking').textContent=w; 
+    document.getElementById('kpiOff').textContent=o;
+    document.getElementById('kpiVacation').textContent = totalVacation; // Atualiza KPI com total do mês
+
+    document.getElementById('listWorking').innerHTML=lists.w; 
+    document.getElementById('listOffShift').innerHTML=lists.os;
+    document.getElementById('listOff').innerHTML=lists.o;
+    
+    // Injeta as pílulas no card de Férias
+    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias este mês.</span>';
 }
 
 function updatePersonalView(name) {
@@ -240,33 +263,13 @@ function updatePersonalView(name) {
     updateWeekendTable(name);
 }
 
-// === GRID MENSAL RESPONSIVO ===
 function updateCalendar(name, schedule) {
     const grid = document.getElementById('calendarGrid');
     grid.innerHTML = '';
-    
-    // Calcula o "offset" (dias vazios antes do dia 1)
-    const firstDay = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
-    
-    // Adiciona células vazias para alinhar o dia 1 ao dia da semana correto
-    for(let i=0; i<firstDay; i++) {
-        grid.innerHTML += '<div class="calendar-cell opacity-0 pointer-events-none"></div>';
-    }
-
-    // Renderiza os dias reais
+    const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
+    for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
     schedule.forEach((st, i) => {
-        // Classes de estilo para status
-        let statusClass = `status-${st}`;
-        
-        // Verifica se é "Hoje"
-        const isToday = (selectedMonthObj.year === currentDateObj.getFullYear() && selectedMonthObj.month === currentDateObj.getMonth() && (i + 1) === new Date().getDate());
-        const todayClass = isToday ? 'ring-2 ring-purple-500' : '';
-
-        grid.innerHTML += `
-            <div onclick="handleCellClick('${name}',${i})" class="calendar-cell ${statusClass} ${todayClass}">
-                <div class="day-number">${i+1}</div>
-                <div class="day-status-badge">${statusMap[st] ? statusMap[st].substring(0,3) : st}</div>
-            </div>`;
+        grid.innerHTML += `<div onclick="handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group"><span class="text-gray-500 text-xs">${i+1}</span><div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div></div>`;
     });
 }
 
@@ -409,9 +412,11 @@ function initRequestsTabListener() {
     const renderList = (snap, containerId, isReceived) => {
         const list = document.getElementById(containerId);
         list.innerHTML = '';
+        let hasItems = false;
         snap.forEach(d => {
             const r = d.data();
             if(r.type === window.activeRequestType) {
+                hasItems = true;
                 const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
                 const colorMap = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
                 let btns = '';
@@ -429,7 +434,7 @@ function initRequestsTabListener() {
                     </div>`;
             }
         });
-        if(list.innerHTML==='') list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
+        if(!hasItems) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
     };
     onSnapshot(qSent, (snap) => renderList(snap, 'sentRequestsList', false));
     onSnapshot(qReceived, (snap) => renderList(snap, 'receivedRequestsList', true));
@@ -463,13 +468,8 @@ function initNotificationsListener(role) {
 window.handleRequest = async function(reqId, action, requesterName, dayIndex, targetName) {
     const reqRef = doc(db, "solicitacoes", reqId);
     try {
-        if (action === 'reject') { 
-            await updateDoc(reqRef, { status: 'rejected' }); 
-        } 
-        else if (action === 'peer_accept') { 
-            await updateDoc(reqRef, { status: 'pending_leader' }); 
-            alert("Aceito! Enviado para o líder."); 
-        } 
+        if (action === 'reject') { await updateDoc(reqRef, { status: 'rejected' }); } 
+        else if (action === 'peer_accept') { await updateDoc(reqRef, { status: 'pending_leader' }); alert("Aceito! Enviado para o líder."); } 
         else if (action === 'leader_approve') {
             await updateDoc(reqRef, { status: 'approved' });
             if (targetName) {
@@ -484,11 +484,8 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T'; 
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
             }
-            
-            // SALVA AUTOMATICAMENTE NO DB APÓS APROVAÇÃO
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
-            
             alert("Aprovação realizada e salva no banco de dados.");
             loadDataFromCloud();
         }
