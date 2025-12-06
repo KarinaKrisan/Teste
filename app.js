@@ -33,7 +33,7 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- HELPER DE HORÁRIO ---
+// --- HELPER HORÁRIO ---
 function isWorkingTime(timeRange) {
     if (!timeRange || typeof timeRange !== 'string') return true;
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
@@ -91,9 +91,13 @@ function setupAdminUI() {
     adminToolbar.classList.remove('hidden');
     document.getElementById('adminEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
+    
     document.getElementById('tabDaily').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); 
+    document.getElementById('tabRequests').classList.add('hidden'); // Admin não pede troca, só aprova
+    
+    // GARANTE QUE O CONTAINER DO SELECT ESTÁ VISÍVEL PARA O ADMIN
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
+    
     switchTab('daily');
 }
 
@@ -102,10 +106,12 @@ function setupCollaboratorUI(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
+
     document.getElementById('tabDaily').classList.add('hidden');
-    document.getElementById('employeeSelectContainer').classList.add('hidden');
+    document.getElementById('employeeSelectContainer').classList.add('hidden'); // Colaborador não troca nome
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.remove('hidden');
+
     switchTab('personal');
 }
 
@@ -120,9 +126,8 @@ async function loadDataFromCloud() {
         
         if(isAdmin) {
             updateDailyView();
-            initSelect();
-            // Se for Admin, chama a função para montar todos os plantões
-            updateWeekendTable(null); 
+            initSelect(); // <--- IMPORTANTE: Popula o dropdown do admin
+            updateWeekendTable(null); // Mostra todos os plantões
         } else if (currentUserName) {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
@@ -131,6 +136,32 @@ async function loadDataFromCloud() {
     finally {
         if(loadingOverlay) setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
     }
+}
+
+// Populate Dropdown (Admin)
+function initSelect() {
+    const s = document.getElementById('employeeSelect');
+    if(!s) return;
+    s.innerHTML = '<option value="">Selecione um colaborador...</option>';
+    
+    // Pega todos os nomes da escala carregada e ordena
+    const names = Object.keys(scheduleData).sort();
+    
+    names.forEach(n => { 
+        s.innerHTML += `<option value="${n}">${n}</option>`; 
+    });
+    
+    // Listener para mudança
+    s.onchange = (e) => {
+        const selectedName = e.target.value;
+        if(selectedName) {
+            updatePersonalView(selectedName);
+        } else {
+            // Se selecionar o default, esconde o card
+            document.getElementById('personalInfoCard').classList.add('hidden');
+            document.getElementById('calendarContainer').classList.add('hidden');
+        }
+    };
 }
 
 async function saveToCloud() {
@@ -249,6 +280,7 @@ function updateDailyView() {
     document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
     document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
     document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
+    
     updateDailyChartDonut(w, o, os, totalVacation);
 }
 
@@ -268,6 +300,7 @@ function updatePersonalView(name) {
     if(!name || !scheduleData[name]) return;
     const getField = (s, k) => { for(const x of k) if(s?.[x]) return s[x]; return null; };
     const iSc = scheduleData[name].info || {};
+    // Se for Admin vendo outro, currentUserProfile é do Admin, então ignoramos e usamos a escala
     const iPr = (currentUserProfile && currentUserProfile.name === name) ? currentUserProfile : {};
 
     const role = getField(iPr,['cargo','Cargo']) || getField(iSc,['cargo','Cargo']) || 'Colaborador';
@@ -295,12 +328,13 @@ function updatePersonalView(name) {
                 </div>
             </div>
         </div>`;
+    
     document.getElementById('personalInfoCard').classList.remove('hidden');
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
     
-    // Admin vê todos os plantões do mês
-    if (isAdmin) updateWeekendTable(null);
+    // Se for Admin, mostra TODOS os plantões (null). Se for Colab, mostra só os dele.
+    if(isAdmin) updateWeekendTable(null); 
     else updateWeekendTable(name);
 }
 
@@ -314,7 +348,6 @@ function updateCalendar(name, schedule) {
     });
 }
 
-// --- PLANTÃO FINS DE SEMANA (ATUALIZADO PARA ADMIN) ---
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     container.innerHTML = '';
@@ -335,10 +368,9 @@ function updateWeekendTable(targetName) {
                 if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            // Lógica Crucial:
-            // Se for Admin (targetName == null), mostra o card SE houver alguém escalado (satWorkers > 0 ou sunWorkers > 0).
-            // Se for Colaborador (targetName != null), mostra o card SÓ SE ele estiver na lista.
-            const shouldShow = isAdmin ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
+            // Se for Admin (targetName=null), mostra sempre se houver workers.
+            // Se for Colab, mostra só se ele estiver na lista.
+            const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
 
             if (shouldShow) {
                 const satDate = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
@@ -536,7 +568,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
-    } catch (e) { console.error(e); alert("Erro ao processar."); }
+    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
 }
 
 function initGlobal() {
