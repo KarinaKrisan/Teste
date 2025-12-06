@@ -15,7 +15,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado Global
+// Estado
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -32,6 +32,33 @@ let selectedMonthObj = availableMonths.find(m => m.year === systemYear && m.mont
 const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga Dom','FE':'Férias','OFF-SHIFT':'Exp.Encerrado', 'F_EFFECTIVE': 'Exp.Encerrado' };
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
+
+// --- HELPER: VERIFICA SE ESTÁ NO HORÁRIO DE TRABALHO ---
+function isWorkingTime(timeRange) {
+    if (!timeRange || typeof timeRange !== 'string') return true; // Se não tem horário, assume trabalhando
+    
+    // Extrai horas (ex: "08:00 - 17:00" ou "19:30 às 02:00")
+    const times = timeRange.match(/(\d{1,2}:\d{2})/g);
+    if (!times || times.length < 2) return true;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Converte para minutos totais do dia
+    const [startH, startM] = times[0].split(':').map(Number);
+    const [endH, endM] = times[1].split(':').map(Number);
+    
+    const startTotal = startH * 60 + startM;
+    const endTotal = endH * 60 + endM;
+
+    // Lógica para turno que vira a noite (Ex: 22:00 as 06:00)
+    if (endTotal < startTotal) {
+        return currentMinutes >= startTotal || currentMinutes < endTotal;
+    } else {
+        // Turno normal (Ex: 09:00 as 18:00)
+        return currentMinutes >= startTotal && currentMinutes < endTotal;
+    }
+}
 
 // --- AUTH ---
 const loadingOverlay = document.getElementById('appLoadingOverlay');
@@ -116,7 +143,6 @@ async function loadDataFromCloud() {
     }
 }
 
-// Salvamento Manual
 async function saveToCloud() {
     if(!isAdmin) return;
     const btn = document.getElementById('btnSaveCloud');
@@ -183,7 +209,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// --- VIEWS (LISTA VERTICAL DE PÍLULAS) ---
+// --- VIEWS ---
 function updateDailyView() {
     if(!isAdmin) return;
     const dateLabel = document.getElementById('currentDateLabel');
@@ -195,30 +221,40 @@ function updateDailyView() {
     let vacationPills = '';
     let totalVacation = 0;
 
-    // ESTILO DE PÍLULA ESTICADA (Lista Vertical)
+    // ESTILO DA PÍLULA (Lista Vertical)
     const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm transition-all hover:scale-[1.02] cursor-default";
 
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         const st = emp.schedule[currentDay-1] || 'F';
         
-        // TRABALHANDO
+        // --- LÓGICA CRUCIAL DE HORÁRIO ---
         if(st === 'T') {
-            w++;
-            lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
+            // Busca o horário no objeto info
+            const hours = emp.info.Horário || emp.info.Horario || emp.info.hours || '';
+            
+            if (isWorkingTime(hours)) {
+                // Está no horário -> TRABALHANDO
+                w++;
+                lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
+            } else {
+                // Fora do horário -> EXP. ENCERRADO
+                os++;
+                lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+            }
         }
-        // ENCERRADO
         else if(st.includes('OFF')) {
+            // Se já estiver marcado como OFF na escala
             os++;
             lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
         }
-        // FÉRIAS (Dinâmico)
         else if(st === 'FE') {
+            // Férias (Dinâmico por dia)
             totalVacation++;
             vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
         }
-        // FOLGA
         else {
+            // Folgas (F, FS, FD)
             o++;
             lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
         }
@@ -229,9 +265,9 @@ function updateDailyView() {
     document.getElementById('kpiVacation').textContent = totalVacation;
     document.getElementById('kpiOffShift').textContent = os;
 
-    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
-    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
-    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
+    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
+    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
+    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
     document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
     
     updateDailyChartDonut(w, o, os, totalVacation);
@@ -339,7 +375,7 @@ function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- INTERACTION & SAVING LOCAL STATE ---
+// --- INTERACTION ---
 window.handleCellClick = function(name, dayIndex) {
     if(isAdmin) {
         const emp = scheduleData[name];
