@@ -103,7 +103,7 @@
                         <div class="bg-[#0F1020] p-4 rounded-2xl border border-green-900/30"><p class="text-xs text-gray-400 uppercase">Em Operação</p><p id="kpiWorking" class="text-3xl font-mono font-bold text-white">0</p></div>
                         <div class="bg-[#0F1020] p-4 rounded-2xl border border-fuchsia-900/30"><p class="text-xs text-gray-400 uppercase">Exp. Encerrado</p><p id="kpiOffShift" class="text-3xl font-mono font-bold text-white">0</p></div>
                         <div class="bg-[#0F1020] p-4 rounded-2xl border border-yellow-900/30"><p class="text-xs text-gray-400 uppercase">Folga</p><p id="kpiOff" class="text-3xl font-mono font-bold text-white">0</p></div>
-                        <div class="bg-[#0F1020] p-4 rounded-2xl border border-red-900/30"><p class="text-xs text-gray-400 uppercase">Férias (Mês)</p><p id="kpiVacation" class="text-3xl font-mono font-bold text-white">0</p></div>
+                        <div class="bg-[#0F1020] p-4 rounded-2xl border border-red-900/30"><p class="text-xs text-gray-400 uppercase">Férias</p><p id="kpiVacation" class="text-3xl font-mono font-bold text-white">0</p></div>
                     </div>
                     <div class="h-64"><canvas id="dailyChart"></canvas></div>
                 </section>
@@ -114,9 +114,8 @@
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden"><h3 class="text-yellow-500 font-bold text-xs uppercase mb-3 text-center">Folga</h3><ul id="listOff" class="overflow-y-auto flex-1 space-y-2 custom-scrollbar"></ul></div>
                     
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden">
-                        <h3 class="text-red-400 font-bold text-xs uppercase mb-3 text-center">Férias no Mês</h3>
-                        <div id="listVacation" class="overflow-y-auto flex-1 custom-scrollbar flex flex-wrap content-start gap-2">
-                            </div>
+                        <h3 class="text-red-400 font-bold text-xs uppercase mb-3 text-center">Férias (Hoje)</h3>
+                        <div id="listVacation" class="overflow-y-auto flex-1 custom-scrollbar flex flex-wrap content-start gap-2"></div>
                     </div>
                 </section>
             </div>
