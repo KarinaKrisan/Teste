@@ -91,13 +91,9 @@ function setupAdminUI() {
     adminToolbar.classList.remove('hidden');
     document.getElementById('adminEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
-    
     document.getElementById('tabDaily').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); // Admin não pede troca, só aprova
-    
-    // GARANTE QUE O CONTAINER DO SELECT ESTÁ VISÍVEL PARA O ADMIN
+    document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
-    
     switchTab('daily');
 }
 
@@ -106,12 +102,10 @@ function setupCollaboratorUI(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
-
     document.getElementById('tabDaily').classList.add('hidden');
-    document.getElementById('employeeSelectContainer').classList.add('hidden'); // Colaborador não troca nome
+    document.getElementById('employeeSelectContainer').classList.add('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.remove('hidden');
-
     switchTab('personal');
 }
 
@@ -124,17 +118,23 @@ async function loadDataFromCloud() {
         rawSchedule = docSnap.exists() ? docSnap.data() : {};
         processScheduleData(); 
         
+        // CORREÇÃO: Força atualização da UI independente do papel
+        updateDailyView();
+        
         if(isAdmin) {
-            updateDailyView();
-            initSelect(); // <--- IMPORTANTE: Popula o dropdown do admin
-            updateWeekendTable(null); // Mostra todos os plantões
+            initSelect(); // Popula o dropdown
+            updateWeekendTable(null); 
         } else if (currentUserName) {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
         }
     } catch (e) { console.error(e); }
     finally {
-        if(loadingOverlay) setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
+        // CORREÇÃO: Remove o loading de forma forçada para não travar
+        if(loadingOverlay) {
+            loadingOverlay.classList.add('opacity-0');
+            setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
+        }
     }
 }
 
@@ -157,7 +157,6 @@ function initSelect() {
         if(selectedName) {
             updatePersonalView(selectedName);
         } else {
-            // Se selecionar o default, esconde o card
             document.getElementById('personalInfoCard').classList.add('hidden');
             document.getElementById('calendarContainer').classList.add('hidden');
         }
@@ -203,7 +202,7 @@ function processScheduleData() {
     if (slider) { slider.max = totalDays; slider.value = currentDay; }
 }
 
-// --- TABS & SUB-TABS ---
+// --- TABS ---
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -297,16 +296,18 @@ function updateDailyChartDonut(w, o, os, v) {
 }
 
 function updatePersonalView(name) {
-    if(!name || !scheduleData[name]) return;
+    // CORREÇÃO: Permite continuar mesmo se scheduleData[name] for undefined, usando fallback
+    let emp = scheduleData[name] || {}; 
+    let empInfo = emp.info || {};
+    let empSchedule = emp.schedule || [];
+
     const getField = (s, k) => { for(const x of k) if(s?.[x]) return s[x]; return null; };
-    const iSc = scheduleData[name].info || {};
-    // Se for Admin vendo outro, currentUserProfile é do Admin, então ignoramos e usamos a escala
     const iPr = (currentUserProfile && currentUserProfile.name === name) ? currentUserProfile : {};
 
-    const role = getField(iPr,['cargo','Cargo']) || getField(iSc,['cargo','Cargo']) || 'Colaborador';
-    const cell = getField(iPr,['celula','Celula','Célula']) || getField(iSc,['celula','Celula','Célula']) || '--';
-    const shift = getField(iPr,['turno','Turno']) || getField(iSc,['turno','Turno']) || '--';
-    const hours = getField(iPr,['horario','Horario','Horário']) || getField(iSc,['horario','Horario','Horário']) || '--';
+    const role = getField(iPr,['cargo','Cargo']) || getField(empInfo,['cargo','Cargo']) || 'Colaborador';
+    const cell = getField(iPr,['celula','Celula','Célula']) || getField(empInfo,['celula','Celula','Célula']) || '--';
+    const shift = getField(iPr,['turno','Turno']) || getField(empInfo,['turno','Turno']) || '--';
+    const hours = getField(iPr,['horario','Horario','Horário']) || getField(empInfo,['horario','Horario','Horário']) || '--';
 
     document.getElementById('personalInfoCard').innerHTML = `
         <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
@@ -331,9 +332,8 @@ function updatePersonalView(name) {
     
     document.getElementById('personalInfoCard').classList.remove('hidden');
     document.getElementById('calendarContainer').classList.remove('hidden');
-    updateCalendar(name, scheduleData[name].schedule);
+    updateCalendar(name, empSchedule);
     
-    // Se for Admin, mostra TODOS os plantões (null). Se for Colab, mostra só os dele.
     if(isAdmin) updateWeekendTable(null); 
     else updateWeekendTable(name);
 }
@@ -343,6 +343,13 @@ function updateCalendar(name, schedule) {
     grid.innerHTML = '';
     const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
+    
+    // Se não tiver escala (usuário novo ou erro), cria dias vazios
+    if (!schedule || schedule.length === 0) {
+        const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month + 1, 0).getDate();
+        schedule = new Array(totalDays).fill('F'); 
+    }
+
     schedule.forEach((st, i) => {
         grid.innerHTML += `<div onclick="handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group"><span class="text-gray-500 text-xs">${i+1}</span><div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div></div>`;
     });
@@ -364,12 +371,10 @@ function updateWeekendTable(targetName) {
 
             Object.keys(scheduleData).forEach(name => {
                 const s = scheduleData[name].schedule;
-                if (s[satIndex] === 'T') satWorkers.push(name);
-                if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
+                if (s && s[satIndex] === 'T') satWorkers.push(name);
+                if (s && hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            // Se for Admin (targetName=null), mostra sempre se houver workers.
-            // Se for Colab, mostra só se ele estiver na lista.
             const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
 
             if (shouldShow) {
