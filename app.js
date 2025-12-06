@@ -197,17 +197,19 @@ function updateDailyView() {
 
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
+        // STATUS DO DIA ATUAL
         const st = emp.schedule[currentDay-1] || 'F';
         
-        // Lista Normal
+        // --- LÓGICA DE LISTAGEM ---
         const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
         
         if(st==='T') { w++; lists.w+=row; }
         else if(st.includes('OFF')) { os++; lists.os+=row; }
-        else if(st!=='FE') { o++; lists.o+=row; }
+        else if(st!=='FE') { o++; lists.o+=row; } // 'FE' não vai na lista de Folga comum
 
-        // LÓGICA DE FÉRIAS AJUSTADA:
-        // Apenas se o status DO DIA ATUAL for 'FE'
+        // --- LÓGICA DE FÉRIAS (AGORA DINÂMICA POR DIA) ---
+        // Se o status DO DIA ATUAL for 'FE', a pessoa aparece aqui.
+        // Se a Patrícia tiver 'F' ou 'T' hoje (acabou as férias), ela cai no bloco de cima (Folga ou Trabalho)
         if(st === 'FE') {
             totalVacation++;
             vacationPills += `<span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-900/30 text-red-400 border border-red-500/30 shadow-sm">${name}</span>`;
@@ -222,6 +224,7 @@ function updateDailyView() {
     document.getElementById('listOffShift').innerHTML=lists.os;
     document.getElementById('listOff').innerHTML=lists.o;
     
+    // Injeta as pílulas de férias APENAS de quem está de férias no dia do slider
     document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias hoje.</span>';
 }
 
@@ -488,7 +491,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
-    } catch (e) { console.error(e); alert("Erro ao processar."); }
+    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
 }
 
 function initGlobal() {
