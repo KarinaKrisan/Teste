@@ -195,37 +195,59 @@ function updateDailyView() {
     let vacationPills = '';
     let totalVacation = 0;
 
+    // ESTILO BASE DA PÍLULA
+    const pillBase = "inline-block px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm transition-all hover:scale-105 cursor-default";
+
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
-        // STATUS DO DIA ATUAL
         const st = emp.schedule[currentDay-1] || 'F';
         
-        // --- LÓGICA DE LISTAGEM ---
-        const row = `<li class="flex justify-between p-2 bg-[#1A1C2E] rounded border border-[#2E3250] mb-1"><span class="text-sm font-bold text-gray-300">${name}</span><span class="text-[10px] status-${st} px-2 rounded">${st}</span></li>`;
-        
-        if(st==='T') { w++; lists.w+=row; }
-        else if(st.includes('OFF')) { os++; lists.os+=row; }
-        else if(st!=='FE') { o++; lists.o+=row; } // 'FE' não vai na lista de Folga comum
-
-        // --- LÓGICA DE FÉRIAS (AGORA DINÂMICA POR DIA) ---
-        // Se o status DO DIA ATUAL for 'FE', a pessoa aparece aqui.
-        // Se a Patrícia tiver 'F' ou 'T' hoje (acabou as férias), ela cai no bloco de cima (Folga ou Trabalho)
-        if(st === 'FE') {
+        // TRABALHANDO (VERDE)
+        if(st === 'T') {
+            w++;
+            lists.w += `<span class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30">${name}</span>`;
+        }
+        // ENCERRADO (ROXO/ROSA)
+        else if(st.includes('OFF')) {
+            os++;
+            lists.os += `<span class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30">${name}</span>`;
+        }
+        // FÉRIAS (VERMELHO) - Dinâmico por dia
+        else if(st === 'FE') {
             totalVacation++;
-            vacationPills += `<span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-red-900/30 text-red-400 border border-red-500/30 shadow-sm">${name}</span>`;
+            vacationPills += `<span class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30">${name}</span>`;
+        }
+        // FOLGA (AMARELO) - Ignora FE aqui
+        else {
+            o++;
+            lists.o += `<span class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30">${name}</span>`;
         }
     });
 
     document.getElementById('kpiWorking').textContent=w; 
     document.getElementById('kpiOff').textContent=o;
     document.getElementById('kpiVacation').textContent = totalVacation;
+    document.getElementById('kpiOffShift').textContent = os;
 
-    document.getElementById('listWorking').innerHTML=lists.w; 
-    document.getElementById('listOffShift').innerHTML=lists.os;
-    document.getElementById('listOff').innerHTML=lists.o;
-    
-    // Injeta as pílulas de férias APENAS de quem está de férias no dia do slider
+    // Preenche as DIVs com as pílulas
+    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém trabalhando.</span>';
+    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém encerrado.</span>';
+    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de folga.</span>';
     document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center">Ninguém de férias hoje.</span>';
+    
+    updateDailyChartDonut(w, o, os, totalVacation);
+}
+
+function updateDailyChartDonut(w, o, os, v) {
+    const ctx = document.getElementById('dailyChart').getContext('2d');
+    if (dailyChart && dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
+    if (!dailyChart) {
+        dailyChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Trabalhando','Folga','Encerrado','Férias'], datasets:[{ data: [w,o,os,v], backgroundColor: ['#34D399','#FBBF24','#E879F9','#F87171'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position:'bottom', labels: { color: '#94A3B8' } } } }
+        });
+    } else { dailyChart.data.datasets[0].data = [w,o,os,v]; dailyChart.update(); }
 }
 
 function updatePersonalView(name) {
