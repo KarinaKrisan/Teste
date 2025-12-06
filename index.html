@@ -109,34 +109,29 @@
                 </section>
                 
                 <section class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden">
                         <h3 class="text-green-400 font-bold text-xs uppercase mb-3 text-center">Trabalhando</h3>
                         <div id="listWorking" class="overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-2"></div>
                     </div>
-
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden">
                         <h3 class="text-fuchsia-400 font-bold text-xs uppercase mb-3 text-center">Encerrado</h3>
                         <div id="listOffShift" class="overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-2"></div>
                     </div>
-
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden">
                         <h3 class="text-yellow-500 font-bold text-xs uppercase mb-3 text-center">Folga</h3>
                         <div id="listOff" class="overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-2"></div>
                     </div>
-                    
                     <div class="cronos-card h-96 flex flex-col rounded-3xl p-4 overflow-hidden">
                         <h3 class="text-red-400 font-bold text-xs uppercase mb-3 text-center">Férias (Hoje)</h3>
                         <div id="listVacation" class="overflow-y-auto flex-1 custom-scrollbar flex flex-col gap-2"></div>
                     </div>
-
                 </section>
             </div>
 
             <div id="personalView" class="tab-content hidden space-y-8">
                 <section class="cronos-card p-6 md:p-8 rounded-3xl">
                     <div id="adminEditHint" class="hidden mb-6 bg-blue-900/20 text-blue-200 px-4 py-3 rounded-xl text-sm border border-blue-500/30 flex items-center">
-                        <i class="fas fa-shield-alt mr-2"></i> MODO ADMIN: Clique para editar direto.
+                        <i class="fas fa-shield-alt mr-2"></i> MODO ADMIN: Selecione um colaborador para ver/editar.
                     </div>
                     <div class="flex flex-col md:flex-row justify-between mb-8">
                         <h2 class="text-2xl font-bold text-white">Escala Individual</h2>
@@ -154,6 +149,7 @@
                         <div id="calendarGrid" class="calendar-grid-container rounded-xl overflow-hidden border border-cronos-border"></div>
                     </div>
                 </section>
+                
                 <section class="cronos-card p-6 rounded-3xl">
                     <h2 class="text-xl font-bold text-white mb-6">Plantão Fins de Semana</h2>
                     <div id="weekendPlantaoContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
