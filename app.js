@@ -33,19 +33,31 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- HELPER DE HORÁRIO ---
+// --- HELPER: VERIFICA SE ESTÁ NO HORÁRIO DE TRABALHO ---
 function isWorkingTime(timeRange) {
-    if (!timeRange || typeof timeRange !== 'string') return true;
+    if (!timeRange || typeof timeRange !== 'string') return true; // Se não tem horário, assume trabalhando
+    
+    // Extrai horas (ex: "08:00 - 17:00" ou "19:30 às 02:00")
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
     if (!times || times.length < 2) return true;
+
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Converte para minutos totais do dia
     const [startH, startM] = times[0].split(':').map(Number);
     const [endH, endM] = times[1].split(':').map(Number);
+    
     const startTotal = startH * 60 + startM;
     const endTotal = endH * 60 + endM;
-    if (endTotal < startTotal) return currentMinutes >= startTotal || currentMinutes < endTotal;
-    else return currentMinutes >= startTotal && currentMinutes < endTotal;
+
+    // Lógica para turno que vira a noite (Ex: 22:00 as 06:00)
+    if (endTotal < startTotal) {
+        return currentMinutes >= startTotal || currentMinutes < endTotal;
+    } else {
+        // Turno normal (Ex: 09:00 as 18:00)
+        return currentMinutes >= startTotal && currentMinutes < endTotal;
+    }
 }
 
 // --- AUTH ---
@@ -121,8 +133,6 @@ async function loadDataFromCloud() {
         if(isAdmin) {
             updateDailyView();
             initSelect();
-            // Se for Admin, chama a função para montar todos os plantões
-            updateWeekendTable(null); 
         } else if (currentUserName) {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
@@ -210,31 +220,41 @@ function updateDailyView() {
     let lists = { w:'', o:'', v:'', os:'' };
     let vacationPills = '';
     let totalVacation = 0;
+
+    // ESTILO DA PÍLULA (Lista Vertical)
     const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm transition-all hover:scale-[1.02] cursor-default";
 
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         const st = emp.schedule[currentDay-1] || 'F';
         
+        // --- LÓGICA CRUCIAL DE HORÁRIO ---
         if(st === 'T') {
+            // Busca o horário no objeto info
             const hours = emp.info.Horário || emp.info.Horario || emp.info.hours || '';
+            
             if (isWorkingTime(hours)) {
+                // Está no horário -> TRABALHANDO
                 w++;
                 lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
             } else {
+                // Fora do horário -> EXP. ENCERRADO
                 os++;
                 lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
             }
         }
         else if(st.includes('OFF')) {
+            // Se já estiver marcado como OFF na escala
             os++;
             lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
         }
         else if(st === 'FE') {
+            // Férias (Dinâmico por dia)
             totalVacation++;
             vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
         }
         else {
+            // Folgas (F, FS, FD)
             o++;
             lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
         }
@@ -249,6 +269,7 @@ function updateDailyView() {
     document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
     document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
     document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
+    
     updateDailyChartDonut(w, o, os, totalVacation);
 }
 
@@ -298,10 +319,7 @@ function updatePersonalView(name) {
     document.getElementById('personalInfoCard').classList.remove('hidden');
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, scheduleData[name].schedule);
-    
-    // Admin vê todos os plantões do mês
-    if (isAdmin) updateWeekendTable(null);
-    else updateWeekendTable(name);
+    updateWeekendTable(name);
 }
 
 function updateCalendar(name, schedule) {
@@ -314,7 +332,6 @@ function updateCalendar(name, schedule) {
     });
 }
 
-// --- PLANTÃO FINS DE SEMANA (ATUALIZADO PARA ADMIN) ---
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     container.innerHTML = '';
@@ -335,12 +352,7 @@ function updateWeekendTable(targetName) {
                 if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            // Lógica Crucial:
-            // Se for Admin (targetName == null), mostra o card SE houver alguém escalado (satWorkers > 0 ou sunWorkers > 0).
-            // Se for Colaborador (targetName != null), mostra o card SÓ SE ele estiver na lista.
-            const shouldShow = isAdmin ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
-
-            if (shouldShow) {
+            if (isAdmin || (satWorkers.includes(targetName) || sunWorkers.includes(targetName))) {
                 const satDate = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
                 const sunDate = hasSunday ? `${pad(d+1)}/${pad(selectedMonthObj.month+1)}` : '-';
                 container.insertAdjacentHTML('beforeend', `
@@ -363,7 +375,7 @@ function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- INTERACTION & SAVING LOCAL STATE ---
+// --- INTERACTION ---
 window.handleCellClick = function(name, dayIndex) {
     if(isAdmin) {
         const emp = scheduleData[name];
@@ -536,7 +548,7 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
             alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
-    } catch (e) { console.error(e); alert("Erro ao processar."); }
+    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
 }
 
 function initGlobal() {
