@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, where, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
+// --- CONFIGURAÇÃO ---
 const firebaseConfig = {
   apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
   authDomain: "dadosescala.firebaseapp.com",
@@ -15,7 +16,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado
+// --- ESTADO GLOBAL ---
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -33,7 +34,19 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- HELPERS ---
+// --- CONTROLE DE UI / LOADING (Blindado) ---
+function hideLoader() {
+    const overlay = document.getElementById('appLoadingOverlay');
+    if(overlay) {
+        overlay.classList.add('opacity-0');
+        setTimeout(() => overlay.classList.add('hidden'), 500);
+    }
+}
+
+// SEGURANÇA: Se travar, remove o loader à força em 5 segundos
+setTimeout(hideLoader, 5000);
+
+// --- HELPER HORÁRIO ---
 function isWorkingTime(timeRange) {
     if (!timeRange || typeof timeRange !== 'string') return true;
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
@@ -48,14 +61,6 @@ function isWorkingTime(timeRange) {
     else return currentMinutes >= startTotal && currentMinutes < endTotal;
 }
 
-function hideLoader() {
-    const overlay = document.getElementById('appLoadingOverlay');
-    if(overlay) {
-        overlay.classList.add('opacity-0');
-        setTimeout(() => overlay.classList.add('hidden'), 500);
-    }
-}
-
 // --- AUTH ---
 const adminToolbar = document.getElementById('adminToolbar');
 const notificationWrapper = document.getElementById('notificationWrapper');
@@ -63,11 +68,15 @@ const notificationWrapper = document.getElementById('notificationWrapper');
 document.getElementById('btnLogout').addEventListener('click', async () => { await signOut(auth); window.location.href = "start.html"; });
 
 onAuthStateChanged(auth, async (user) => {
+    // 1. Não logado
     if (!user) {
-        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) window.location.href = "start.html";
+        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) {
+            window.location.href = "start.html";
+        }
         return;
     }
 
+    // 2. Logado - Verifica perfil
     try {
         const adminRef = doc(db, "administradores", user.uid);
         const adminSnap = await getDoc(adminRef);
@@ -87,15 +96,17 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserName = currentUserProfile.name;
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
+            } else {
+                console.error("ERRO CRÍTICO: Usuário logado mas sem perfil no banco.");
+                alert("Erro: Seu usuário não tem perfil de Admin nem de Colaborador.");
             }
         }
         notificationWrapper.classList.remove('hidden');
     } catch (e) { 
-        console.error(e); 
-        alert("Erro de conexão: " + e.message);
+        console.error("Erro Auth:", e);
     } 
     finally { 
-        // Garante o carregamento dos dados E a remoção do loader
+        // Carrega dados e LIBERA TELA
         loadDataFromCloud(); 
     }
 });
@@ -128,10 +139,17 @@ async function loadDataFromCloud() {
     try {
         const docRef = doc(db, "escalas", docId);
         const docSnap = await getDoc(docRef);
-        rawSchedule = docSnap.exists() ? docSnap.data() : {};
+        
+        if (docSnap.exists()) {
+            rawSchedule = docSnap.data();
+        } else {
+            console.log("Escala não encontrada para este mês.");
+            rawSchedule = {};
+        }
+        
         processScheduleData(); 
         
-        // Renderiza a UI com o que tem
+        // Atualiza interface independente do perfil
         updateDailyView();
         
         if(isAdmin) {
@@ -142,14 +160,15 @@ async function loadDataFromCloud() {
             initRequestsTabListener(); 
         }
     } catch (e) { 
-        console.error("Erro dados:", e); 
+        console.error("Erro ao baixar dados:", e); 
     }
     finally {
+        // GARANTE QUE A TELA LIBERA
         hideLoader();
     }
 }
 
-// Populate Dropdown
+// --- POPULAR SELECT (ADMIN) ---
 function initSelect() {
     const s = document.getElementById('employeeSelect');
     if(!s) return;
@@ -166,6 +185,7 @@ function initSelect() {
     };
 }
 
+// --- SALVAMENTO ---
 async function saveToCloud() {
     if(!isAdmin) return;
     const btn = document.getElementById('btnSaveCloud');
@@ -234,10 +254,12 @@ document.querySelectorAll('.tab-button').forEach(b => {
 
 // --- VIEWS ---
 function updateDailyView() {
-    // Mesmo admin não sendo, a função deve rodar para não quebrar a lógica de inicialização
+    // Roda sempre para inicializar componentes vazios se necessario
     const dateLabel = document.getElementById('currentDateLabel');
-    const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
-    dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
+    if(dateLabel) {
+        const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
+        dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
+    }
     
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
@@ -273,21 +295,25 @@ function updateDailyView() {
         }
     });
 
-    document.getElementById('kpiWorking').textContent=w; 
-    document.getElementById('kpiOff').textContent=o;
-    document.getElementById('kpiVacation').textContent = totalVacation;
-    document.getElementById('kpiOffShift').textContent = os;
+    if(document.getElementById('kpiWorking')) {
+        document.getElementById('kpiWorking').textContent=w; 
+        document.getElementById('kpiOff').textContent=o;
+        document.getElementById('kpiVacation').textContent = totalVacation;
+        document.getElementById('kpiOffShift').textContent = os;
 
-    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
-    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
-    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
-    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
-    
-    updateDailyChartDonut(w, o, os, totalVacation);
+        document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
+        document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
+        document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
+        document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
+        
+        updateDailyChartDonut(w, o, os, totalVacation);
+    }
 }
 
 function updateDailyChartDonut(w, o, os, v) {
-    const ctx = document.getElementById('dailyChart').getContext('2d');
+    const canvas = document.getElementById('dailyChart');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (dailyChart && dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
     if (!dailyChart) {
         dailyChart = new Chart(ctx, {
@@ -299,7 +325,7 @@ function updateDailyChartDonut(w, o, os, v) {
 }
 
 function updatePersonalView(name) {
-    // CORREÇÃO: Fallback se scheduleData[name] não existir
+    // Fallback seguro
     let emp = scheduleData[name] || {}; 
     let empInfo = emp.info || {};
     let empSchedule = emp.schedule || [];
@@ -312,7 +338,9 @@ function updatePersonalView(name) {
     const shift = getField(iPr,['turno','Turno']) || getField(empInfo,['turno','Turno']) || '--';
     const hours = getField(iPr,['horario','Horario','Horário']) || getField(empInfo,['horario','Horario','Horário']) || '--';
 
-    document.getElementById('personalInfoCard').innerHTML = `
+    const card = document.getElementById('personalInfoCard');
+    if(card) {
+        card.innerHTML = `
         <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
             <div class="p-6">
@@ -332,8 +360,9 @@ function updatePersonalView(name) {
                 </div>
             </div>
         </div>`;
-    
-    document.getElementById('personalInfoCard').classList.remove('hidden');
+        card.classList.remove('hidden');
+    }
+
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, empSchedule);
     
@@ -343,6 +372,7 @@ function updatePersonalView(name) {
 
 function updateCalendar(name, schedule) {
     const grid = document.getElementById('calendarGrid');
+    if(!grid) return;
     grid.innerHTML = '';
     const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
@@ -359,6 +389,7 @@ function updateCalendar(name, schedule) {
 
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
+    if(!container) return;
     container.innerHTML = '';
     if(Object.keys(scheduleData).length === 0) return;
     const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
@@ -402,7 +433,7 @@ function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- INTERACTION & SAVING LOCAL STATE ---
+// --- INTERACTION ---
 window.handleCellClick = function(name, dayIndex) {
     if(isAdmin) {
         const emp = scheduleData[name];
@@ -504,6 +535,7 @@ function initRequestsTabListener() {
 
     const renderList = (snap, containerId, isReceived) => {
         const list = document.getElementById(containerId);
+        if(!list) return;
         list.innerHTML = '';
         let hasItems = false;
 
@@ -551,11 +583,14 @@ function initNotificationsListener(role) {
     if(notifUnsubscribe) notifUnsubscribe();
     notifUnsubscribe = onSnapshot(q, (snap) => {
         const c = snap.size;
-        document.getElementById('globalBadge').textContent = c;
-        document.getElementById('globalBadge').className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
+        const badge = document.getElementById('globalBadge');
+        if(badge) {
+            badge.textContent = c;
+            badge.className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
+        }
         
-        // Popula painel flutuante
         const list = document.getElementById('globalList');
+        if(!list) return;
         list.innerHTML = '';
         if(c === 0) list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>';
         snap.forEach(d => {
@@ -568,23 +603,14 @@ function initNotificationsListener(role) {
     });
 }
 
-// === FUNÇÃO CRÍTICA DE SALVAMENTO ===
 window.handleRequest = async function(reqId, action, requesterName, dayIndex, targetName) {
     const reqRef = doc(db, "solicitacoes", reqId);
     try {
-        if (action === 'reject') { 
-            await updateDoc(reqRef, { status: 'rejected' }); 
-        } 
-        else if (action === 'peer_accept') { 
-            await updateDoc(reqRef, { status: 'pending_leader' }); 
-            alert("Aceito! Enviado para o líder."); 
-        } 
+        if (action === 'reject') { await updateDoc(reqRef, { status: 'rejected' }); } 
+        else if (action === 'peer_accept') { await updateDoc(reqRef, { status: 'pending_leader' }); alert("Aceito! Enviado para o líder."); } 
         else if (action === 'leader_approve') {
             await updateDoc(reqRef, { status: 'approved' });
-            
-            // 1. Atualiza na Memória (Visual)
             if (targetName) {
-                // Troca (Swap)
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = targetStatus;
@@ -592,29 +618,35 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
                 rawSchedule[targetName].calculatedSchedule = scheduleData[targetName].schedule;
             } else {
-                // Troca Simples (Turno)
                 const curr = scheduleData[requesterName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T'; 
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
             }
-            
-            // 2. SALVA NO FIRESTORE (PERSISTÊNCIA)
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
-            
-            alert("Aprovação realizada e salva no banco de dados.");
+            alert("Aprovado e atualizado.");
             loadDataFromCloud();
         }
-    } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
+    } catch (e) { console.error(e); alert("Erro ao processar."); }
 }
 
 function initGlobal() {
     initSelect();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    // Safety net: force remove loader after 5 seconds if hanging
-    setTimeout(() => { hideLoader(); }, 5000); 
-    loadDataFromCloud();
+    const header = document.getElementById('monthSelectorContainer');
+    if(!document.getElementById('monthSel')) {
+        const sel = document.createElement('select'); sel.id='monthSel';
+        sel.className = 'bg-[#1A1C2E] text-white text-sm px-4 py-2 rounded-lg border border-[#2E3250] outline-none';
+        availableMonths.forEach(m => {
+            const opt = document.createElement('option'); opt.value = `${m.year}-${m.month}`;
+            opt.textContent = `${monthNames[m.month]}/${m.year}`;
+            if(m.month === selectedMonthObj.month && m.year === selectedMonthObj.year) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', e=>{ const [y,mo] = e.target.value.split('-').map(Number); selectedMonthObj={year:y, month:mo}; loadDataFromCloud(); });
+        header.appendChild(sel);
+    }
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
 function initSelect() { /*...*/ }
