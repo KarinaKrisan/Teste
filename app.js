@@ -33,7 +33,7 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- HELPER HORÁRIO ---
+// --- HELPERS ---
 function isWorkingTime(timeRange) {
     if (!timeRange || typeof timeRange !== 'string') return true;
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
@@ -48,8 +48,15 @@ function isWorkingTime(timeRange) {
     else return currentMinutes >= startTotal && currentMinutes < endTotal;
 }
 
+function hideLoader() {
+    const overlay = document.getElementById('appLoadingOverlay');
+    if(overlay) {
+        overlay.classList.add('opacity-0');
+        setTimeout(() => overlay.classList.add('hidden'), 500);
+    }
+}
+
 // --- AUTH ---
-const loadingOverlay = document.getElementById('appLoadingOverlay');
 const adminToolbar = document.getElementById('adminToolbar');
 const notificationWrapper = document.getElementById('notificationWrapper');
 
@@ -83,8 +90,14 @@ onAuthStateChanged(auth, async (user) => {
             }
         }
         notificationWrapper.classList.remove('hidden');
-    } catch (e) { console.error(e); } 
-    finally { loadDataFromCloud(); }
+    } catch (e) { 
+        console.error(e); 
+        alert("Erro de conexão: " + e.message);
+    } 
+    finally { 
+        // Garante o carregamento dos dados E a remoção do loader
+        loadDataFromCloud(); 
+    }
 });
 
 function setupAdminUI() {
@@ -118,45 +131,35 @@ async function loadDataFromCloud() {
         rawSchedule = docSnap.exists() ? docSnap.data() : {};
         processScheduleData(); 
         
-        // CORREÇÃO: Força atualização da UI independente do papel
+        // Renderiza a UI com o que tem
         updateDailyView();
         
         if(isAdmin) {
-            initSelect(); // Popula o dropdown
+            initSelect(); 
             updateWeekendTable(null); 
         } else if (currentUserName) {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Erro dados:", e); 
+    }
     finally {
-        // CORREÇÃO: Remove o loading de forma forçada para não travar
-        if(loadingOverlay) {
-            loadingOverlay.classList.add('opacity-0');
-            setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
-        }
+        hideLoader();
     }
 }
 
-// Populate Dropdown (Admin)
+// Populate Dropdown
 function initSelect() {
     const s = document.getElementById('employeeSelect');
     if(!s) return;
     s.innerHTML = '<option value="">Selecione um colaborador...</option>';
-    
-    // Pega todos os nomes da escala carregada e ordena
     const names = Object.keys(scheduleData).sort();
-    
-    names.forEach(n => { 
-        s.innerHTML += `<option value="${n}">${n}</option>`; 
-    });
-    
-    // Listener para mudança
+    names.forEach(n => { s.innerHTML += `<option value="${n}">${n}</option>`; });
     s.onchange = (e) => {
         const selectedName = e.target.value;
-        if(selectedName) {
-            updatePersonalView(selectedName);
-        } else {
+        if(selectedName) updatePersonalView(selectedName);
+        else {
             document.getElementById('personalInfoCard').classList.add('hidden');
             document.getElementById('calendarContainer').classList.add('hidden');
         }
@@ -231,7 +234,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
 
 // --- VIEWS ---
 function updateDailyView() {
-    if(!isAdmin) return;
+    // Mesmo admin não sendo, a função deve rodar para não quebrar a lógica de inicialização
     const dateLabel = document.getElementById('currentDateLabel');
     const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
     dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
@@ -296,7 +299,7 @@ function updateDailyChartDonut(w, o, os, v) {
 }
 
 function updatePersonalView(name) {
-    // CORREÇÃO: Permite continuar mesmo se scheduleData[name] for undefined, usando fallback
+    // CORREÇÃO: Fallback se scheduleData[name] não existir
     let emp = scheduleData[name] || {}; 
     let empInfo = emp.info || {};
     let empSchedule = emp.schedule || [];
@@ -344,7 +347,6 @@ function updateCalendar(name, schedule) {
     const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
     
-    // Se não tiver escala (usuário novo ou erro), cria dias vazios
     if (!schedule || schedule.length === 0) {
         const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month + 1, 0).getDate();
         schedule = new Array(totalDays).fill('F'); 
@@ -455,19 +457,25 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     const type = document.getElementById('reqType').value;
     const targetEmp = document.getElementById('reqTargetEmployee').value;
     let name = document.getElementById('reqEmployeeName').value;
+    
     let idx = parseInt(document.getElementById('reqDateIndex').value);
     const manualDate = document.getElementById('reqDateManual').value;
+    
     if (document.getElementById('reqDateDisplay').classList.contains('hidden')) {
         if (!manualDate) { alert("Selecione a data."); return; }
         const dParts = manualDate.split('-');
         idx = parseInt(dParts[2]) - 1;
         name = currentUserName;
     }
+
     const reason = document.getElementById('reqReason').value;
     const needsPeer = (type !== 'troca_turno');
+
     if(needsPeer && !targetEmp) { alert("Selecione o colega."); return; }
     if(!reason) { alert("Informe o motivo."); return; }
+
     btn.innerHTML = 'Enviando...'; btn.disabled = true;
+
     try {
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
         await addDoc(collection(db, "solicitacoes"), {
@@ -493,24 +501,31 @@ function initRequestsTabListener() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", currentUserName));
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName));
+
     const renderList = (snap, containerId, isReceived) => {
         const list = document.getElementById(containerId);
         list.innerHTML = '';
         let hasItems = false;
+
         snap.forEach(d => {
             const r = d.data();
             if(r.type === window.activeRequestType) {
                 hasItems = true;
                 const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
                 const colorMap = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
+                
                 let btns = '';
                 if(isReceived && r.status === 'pending_peer') {
                     btns = `<div class="flex gap-2 mt-2"><button onclick="window.handleRequest('${d.id}', 'peer_accept')" class="flex-1 bg-sky-600/30 text-sky-400 text-xs py-1 rounded">Aceitar</button><button onclick="window.handleRequest('${d.id}', 'reject')" class="flex-1 bg-red-600/30 text-red-400 text-xs py-1 rounded">Recusar</button></div>`;
                 }
+
                 list.innerHTML += `
                     <div class="bg-[#0F1020] p-3 rounded-lg border border-[#2E3250] mb-2">
                         <div class="flex justify-between items-start">
-                            <div><span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span><div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div></div>
+                            <div>
+                                <span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span>
+                                <div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div>
+                            </div>
                             <span class="text-[10px] font-bold uppercase ${colorMap[r.status]}">${statusMap[r.status]}</span>
                         </div>
                         <p class="text-xs text-gray-500 italic mt-1">"${r.reason}"</p>
@@ -520,6 +535,7 @@ function initRequestsTabListener() {
         });
         if(!hasItems) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
     };
+
     onSnapshot(qSent, (snap) => renderList(snap, 'sentRequestsList', false));
     onSnapshot(qReceived, (snap) => renderList(snap, 'receivedRequestsList', true));
 }
@@ -531,11 +547,14 @@ function initNotificationsListener(role) {
     let q;
     if (role === 'admin') q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("status", "==", "pending_leader"));
     else q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName), where("status", "==", "pending_peer"));
+
     if(notifUnsubscribe) notifUnsubscribe();
     notifUnsubscribe = onSnapshot(q, (snap) => {
         const c = snap.size;
         document.getElementById('globalBadge').textContent = c;
         document.getElementById('globalBadge').className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
+        
+        // Popula painel flutuante
         const list = document.getElementById('globalList');
         list.innerHTML = '';
         if(c === 0) list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>';
@@ -549,14 +568,23 @@ function initNotificationsListener(role) {
     });
 }
 
+// === FUNÇÃO CRÍTICA DE SALVAMENTO ===
 window.handleRequest = async function(reqId, action, requesterName, dayIndex, targetName) {
     const reqRef = doc(db, "solicitacoes", reqId);
     try {
-        if (action === 'reject') { await updateDoc(reqRef, { status: 'rejected' }); } 
-        else if (action === 'peer_accept') { await updateDoc(reqRef, { status: 'pending_leader' }); alert("Aceito! Enviado para o líder."); } 
+        if (action === 'reject') { 
+            await updateDoc(reqRef, { status: 'rejected' }); 
+        } 
+        else if (action === 'peer_accept') { 
+            await updateDoc(reqRef, { status: 'pending_leader' }); 
+            alert("Aceito! Enviado para o líder."); 
+        } 
         else if (action === 'leader_approve') {
             await updateDoc(reqRef, { status: 'approved' });
+            
+            // 1. Atualiza na Memória (Visual)
             if (targetName) {
+                // Troca (Swap)
                 const reqStatus = scheduleData[requesterName].schedule[dayIndex];
                 const targetStatus = scheduleData[targetName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = targetStatus;
@@ -564,13 +592,17 @@ window.handleRequest = async function(reqId, action, requesterName, dayIndex, ta
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
                 rawSchedule[targetName].calculatedSchedule = scheduleData[targetName].schedule;
             } else {
+                // Troca Simples (Turno)
                 const curr = scheduleData[requesterName].schedule[dayIndex];
                 scheduleData[requesterName].schedule[dayIndex] = (curr === 'T') ? 'F' : 'T'; 
                 rawSchedule[requesterName].calculatedSchedule = scheduleData[requesterName].schedule;
             }
+            
+            // 2. SALVA NO FIRESTORE (PERSISTÊNCIA)
             const docEscalaId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
             await setDoc(doc(db, "escalas", docEscalaId), rawSchedule, { merge: true });
-            alert("Aprovado e atualizado.");
+            
+            alert("Aprovação realizada e salva no banco de dados.");
             loadDataFromCloud();
         }
     } catch (e) { console.error(e); alert("Erro ao processar solicitação."); }
@@ -580,25 +612,9 @@ function initGlobal() {
     initSelect();
     const ds = document.getElementById('dateSlider');
     if (ds) ds.addEventListener('input', e => { currentDay = parseInt(e.target.value); updateDailyView(); });
-    const header = document.getElementById('monthSelectorContainer');
-    if(!document.getElementById('monthSel')) {
-        const sel = document.createElement('select'); sel.id='monthSel';
-        sel.className = 'bg-[#1A1C2E] text-white text-sm px-4 py-2 rounded-lg border border-[#2E3250] outline-none';
-        availableMonths.forEach(m => {
-            const opt = document.createElement('option'); opt.value = `${m.year}-${m.month}`;
-            opt.textContent = `${monthNames[m.month]}/${m.year}`;
-            if(m.month === selectedMonthObj.month && m.year === selectedMonthObj.year) opt.selected = true;
-            sel.appendChild(opt);
-        });
-        sel.addEventListener('change', e=>{ const [y,mo] = e.target.value.split('-').map(Number); selectedMonthObj={year:y, month:mo}; loadDataFromCloud(); });
-        header.appendChild(sel);
-    }
+    // Safety net: force remove loader after 5 seconds if hanging
+    setTimeout(() => { hideLoader(); }, 5000); 
+    loadDataFromCloud();
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
-function initSelect() {
-    const s = document.getElementById('employeeSelect');
-    if(!s) return;
-    s.innerHTML = '<option value="">Selecione...</option>';
-    Object.keys(scheduleData).sort().forEach(n => { s.innerHTML += `<option value="${n}">${n}</option>`; });
-    s.onchange = (e) => updatePersonalView(e.target.value);
-}
+function initSelect() { /*...*/ }
