@@ -2,7 +2,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, where, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-// --- CONFIGURAÇÃO ---
 const firebaseConfig = {
   apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
   authDomain: "dadosescala.firebaseapp.com",
@@ -16,7 +15,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// --- ESTADO GLOBAL ---
+// Estado
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -34,19 +33,7 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- CONTROLE DE UI / LOADING (Blindado) ---
-function hideLoader() {
-    const overlay = document.getElementById('appLoadingOverlay');
-    if(overlay) {
-        overlay.classList.add('opacity-0');
-        setTimeout(() => overlay.classList.add('hidden'), 500);
-    }
-}
-
-// SEGURANÇA: Se travar, remove o loader à força em 5 segundos
-setTimeout(hideLoader, 5000);
-
-// --- HELPER HORÁRIO ---
+// --- HELPER DE HORÁRIO ---
 function isWorkingTime(timeRange) {
     if (!timeRange || typeof timeRange !== 'string') return true;
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
@@ -62,21 +49,18 @@ function isWorkingTime(timeRange) {
 }
 
 // --- AUTH ---
+const loadingOverlay = document.getElementById('appLoadingOverlay');
 const adminToolbar = document.getElementById('adminToolbar');
 const notificationWrapper = document.getElementById('notificationWrapper');
 
 document.getElementById('btnLogout').addEventListener('click', async () => { await signOut(auth); window.location.href = "start.html"; });
 
 onAuthStateChanged(auth, async (user) => {
-    // 1. Não logado
     if (!user) {
-        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) {
-            window.location.href = "start.html";
-        }
+        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) window.location.href = "start.html";
         return;
     }
 
-    // 2. Logado - Verifica perfil
     try {
         const adminRef = doc(db, "administradores", user.uid);
         const adminSnap = await getDoc(adminRef);
@@ -96,19 +80,11 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserName = currentUserProfile.name;
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
-            } else {
-                console.error("ERRO CRÍTICO: Usuário logado mas sem perfil no banco.");
-                alert("Erro: Seu usuário não tem perfil de Admin nem de Colaborador.");
             }
         }
         notificationWrapper.classList.remove('hidden');
-    } catch (e) { 
-        console.error("Erro Auth:", e);
-    } 
-    finally { 
-        // Carrega dados e LIBERA TELA
-        loadDataFromCloud(); 
-    }
+    } catch (e) { console.error(e); } 
+    finally { loadDataFromCloud(); }
 });
 
 function setupAdminUI() {
@@ -139,53 +115,24 @@ async function loadDataFromCloud() {
     try {
         const docRef = doc(db, "escalas", docId);
         const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-            rawSchedule = docSnap.data();
-        } else {
-            console.log("Escala não encontrada para este mês.");
-            rawSchedule = {};
-        }
-        
+        rawSchedule = docSnap.exists() ? docSnap.data() : {};
         processScheduleData(); 
         
-        // Atualiza interface independente do perfil
-        updateDailyView();
-        
         if(isAdmin) {
-            initSelect(); 
+            updateDailyView();
+            initSelect();
+            // Se for Admin, chama a função para montar todos os plantões
             updateWeekendTable(null); 
         } else if (currentUserName) {
             updatePersonalView(currentUserName);
             initRequestsTabListener(); 
         }
-    } catch (e) { 
-        console.error("Erro ao baixar dados:", e); 
-    }
+    } catch (e) { console.error(e); }
     finally {
-        // GARANTE QUE A TELA LIBERA
-        hideLoader();
+        if(loadingOverlay) setTimeout(() => loadingOverlay.classList.add('hidden'), 500);
     }
 }
 
-// --- POPULAR SELECT (ADMIN) ---
-function initSelect() {
-    const s = document.getElementById('employeeSelect');
-    if(!s) return;
-    s.innerHTML = '<option value="">Selecione um colaborador...</option>';
-    const names = Object.keys(scheduleData).sort();
-    names.forEach(n => { s.innerHTML += `<option value="${n}">${n}</option>`; });
-    s.onchange = (e) => {
-        const selectedName = e.target.value;
-        if(selectedName) updatePersonalView(selectedName);
-        else {
-            document.getElementById('personalInfoCard').classList.add('hidden');
-            document.getElementById('calendarContainer').classList.add('hidden');
-        }
-    };
-}
-
-// --- SALVAMENTO ---
 async function saveToCloud() {
     if(!isAdmin) return;
     const btn = document.getElementById('btnSaveCloud');
@@ -225,7 +172,7 @@ function processScheduleData() {
     if (slider) { slider.max = totalDays; slider.value = currentDay; }
 }
 
-// --- TABS ---
+// --- TABS & SUB-TABS ---
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -254,12 +201,10 @@ document.querySelectorAll('.tab-button').forEach(b => {
 
 // --- VIEWS ---
 function updateDailyView() {
-    // Roda sempre para inicializar componentes vazios se necessario
+    if(!isAdmin) return;
     const dateLabel = document.getElementById('currentDateLabel');
-    if(dateLabel) {
-        const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
-        dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
-    }
+    const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
+    dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
     
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
@@ -295,25 +240,20 @@ function updateDailyView() {
         }
     });
 
-    if(document.getElementById('kpiWorking')) {
-        document.getElementById('kpiWorking').textContent=w; 
-        document.getElementById('kpiOff').textContent=o;
-        document.getElementById('kpiVacation').textContent = totalVacation;
-        document.getElementById('kpiOffShift').textContent = os;
+    document.getElementById('kpiWorking').textContent=w; 
+    document.getElementById('kpiOff').textContent=o;
+    document.getElementById('kpiVacation').textContent = totalVacation;
+    document.getElementById('kpiOffShift').textContent = os;
 
-        document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
-        document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
-        document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
-        document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
-        
-        updateDailyChartDonut(w, o, os, totalVacation);
-    }
+    document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
+    document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
+    document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
+    document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
+    updateDailyChartDonut(w, o, os, totalVacation);
 }
 
 function updateDailyChartDonut(w, o, os, v) {
-    const canvas = document.getElementById('dailyChart');
-    if(!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = document.getElementById('dailyChart').getContext('2d');
     if (dailyChart && dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
     if (!dailyChart) {
         dailyChart = new Chart(ctx, {
@@ -325,22 +265,17 @@ function updateDailyChartDonut(w, o, os, v) {
 }
 
 function updatePersonalView(name) {
-    // Fallback seguro
-    let emp = scheduleData[name] || {}; 
-    let empInfo = emp.info || {};
-    let empSchedule = emp.schedule || [];
-
+    if(!name || !scheduleData[name]) return;
     const getField = (s, k) => { for(const x of k) if(s?.[x]) return s[x]; return null; };
+    const iSc = scheduleData[name].info || {};
     const iPr = (currentUserProfile && currentUserProfile.name === name) ? currentUserProfile : {};
 
-    const role = getField(iPr,['cargo','Cargo']) || getField(empInfo,['cargo','Cargo']) || 'Colaborador';
-    const cell = getField(iPr,['celula','Celula','Célula']) || getField(empInfo,['celula','Celula','Célula']) || '--';
-    const shift = getField(iPr,['turno','Turno']) || getField(empInfo,['turno','Turno']) || '--';
-    const hours = getField(iPr,['horario','Horario','Horário']) || getField(empInfo,['horario','Horario','Horário']) || '--';
+    const role = getField(iPr,['cargo','Cargo']) || getField(iSc,['cargo','Cargo']) || 'Colaborador';
+    const cell = getField(iPr,['celula','Celula','Célula']) || getField(iSc,['celula','Celula','Célula']) || '--';
+    const shift = getField(iPr,['turno','Turno']) || getField(iSc,['turno','Turno']) || '--';
+    const hours = getField(iPr,['horario','Horario','Horário']) || getField(iSc,['horario','Horario','Horário']) || '--';
 
-    const card = document.getElementById('personalInfoCard');
-    if(card) {
-        card.innerHTML = `
+    document.getElementById('personalInfoCard').innerHTML = `
         <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
             <div class="p-6">
@@ -360,36 +295,28 @@ function updatePersonalView(name) {
                 </div>
             </div>
         </div>`;
-        card.classList.remove('hidden');
-    }
-
+    document.getElementById('personalInfoCard').classList.remove('hidden');
     document.getElementById('calendarContainer').classList.remove('hidden');
-    updateCalendar(name, empSchedule);
+    updateCalendar(name, scheduleData[name].schedule);
     
-    if(isAdmin) updateWeekendTable(null); 
+    // Admin vê todos os plantões do mês
+    if (isAdmin) updateWeekendTable(null);
     else updateWeekendTable(name);
 }
 
 function updateCalendar(name, schedule) {
     const grid = document.getElementById('calendarGrid');
-    if(!grid) return;
     grid.innerHTML = '';
     const empty = new Date(selectedMonthObj.year, selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
-    
-    if (!schedule || schedule.length === 0) {
-        const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month + 1, 0).getDate();
-        schedule = new Array(totalDays).fill('F'); 
-    }
-
     schedule.forEach((st, i) => {
         grid.innerHTML += `<div onclick="handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group"><span class="text-gray-500 text-xs">${i+1}</span><div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div></div>`;
     });
 }
 
+// --- PLANTÃO FINS DE SEMANA (ATUALIZADO PARA ADMIN) ---
 function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
-    if(!container) return;
     container.innerHTML = '';
     if(Object.keys(scheduleData).length === 0) return;
     const totalDays = new Date(selectedMonthObj.year, selectedMonthObj.month+1, 0).getDate();
@@ -404,11 +331,14 @@ function updateWeekendTable(targetName) {
 
             Object.keys(scheduleData).forEach(name => {
                 const s = scheduleData[name].schedule;
-                if (s && s[satIndex] === 'T') satWorkers.push(name);
-                if (s && hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
+                if (s[satIndex] === 'T') satWorkers.push(name);
+                if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
+            // Lógica Crucial:
+            // Se for Admin (targetName == null), mostra o card SE houver alguém escalado (satWorkers > 0 ou sunWorkers > 0).
+            // Se for Colaborador (targetName != null), mostra o card SÓ SE ele estiver na lista.
+            const shouldShow = isAdmin ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
 
             if (shouldShow) {
                 const satDate = `${pad(d)}/${pad(selectedMonthObj.month+1)}`;
@@ -433,7 +363,7 @@ function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- INTERACTION ---
+// --- INTERACTION & SAVING LOCAL STATE ---
 window.handleCellClick = function(name, dayIndex) {
     if(isAdmin) {
         const emp = scheduleData[name];
@@ -488,25 +418,19 @@ document.getElementById('btnSendRequest').addEventListener('click', async () => 
     const type = document.getElementById('reqType').value;
     const targetEmp = document.getElementById('reqTargetEmployee').value;
     let name = document.getElementById('reqEmployeeName').value;
-    
     let idx = parseInt(document.getElementById('reqDateIndex').value);
     const manualDate = document.getElementById('reqDateManual').value;
-    
     if (document.getElementById('reqDateDisplay').classList.contains('hidden')) {
         if (!manualDate) { alert("Selecione a data."); return; }
         const dParts = manualDate.split('-');
         idx = parseInt(dParts[2]) - 1;
         name = currentUserName;
     }
-
     const reason = document.getElementById('reqReason').value;
     const needsPeer = (type !== 'troca_turno');
-
     if(needsPeer && !targetEmp) { alert("Selecione o colega."); return; }
     if(!reason) { alert("Informe o motivo."); return; }
-
     btn.innerHTML = 'Enviando...'; btn.disabled = true;
-
     try {
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
         await addDoc(collection(db, "solicitacoes"), {
@@ -532,32 +456,24 @@ function initRequestsTabListener() {
     const docId = `escala-${selectedMonthObj.year}-${String(selectedMonthObj.month+1).padStart(2,'0')}`;
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", currentUserName));
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName));
-
     const renderList = (snap, containerId, isReceived) => {
         const list = document.getElementById(containerId);
-        if(!list) return;
         list.innerHTML = '';
         let hasItems = false;
-
         snap.forEach(d => {
             const r = d.data();
             if(r.type === window.activeRequestType) {
                 hasItems = true;
                 const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
                 const colorMap = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
-                
                 let btns = '';
                 if(isReceived && r.status === 'pending_peer') {
                     btns = `<div class="flex gap-2 mt-2"><button onclick="window.handleRequest('${d.id}', 'peer_accept')" class="flex-1 bg-sky-600/30 text-sky-400 text-xs py-1 rounded">Aceitar</button><button onclick="window.handleRequest('${d.id}', 'reject')" class="flex-1 bg-red-600/30 text-red-400 text-xs py-1 rounded">Recusar</button></div>`;
                 }
-
                 list.innerHTML += `
                     <div class="bg-[#0F1020] p-3 rounded-lg border border-[#2E3250] mb-2">
                         <div class="flex justify-between items-start">
-                            <div>
-                                <span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span>
-                                <div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div>
-                            </div>
+                            <div><span class="text-sky-400 font-bold text-xs uppercase">${isReceived ? r.requester : 'Para: '+(r.target||'Líder')}</span><div class="text-[10px] text-gray-400">Dia ${r.dayIndex+1}</div></div>
                             <span class="text-[10px] font-bold uppercase ${colorMap[r.status]}">${statusMap[r.status]}</span>
                         </div>
                         <p class="text-xs text-gray-500 italic mt-1">"${r.reason}"</p>
@@ -567,7 +483,6 @@ function initRequestsTabListener() {
         });
         if(!hasItems) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação deste tipo.</p>';
     };
-
     onSnapshot(qSent, (snap) => renderList(snap, 'sentRequestsList', false));
     onSnapshot(qReceived, (snap) => renderList(snap, 'receivedRequestsList', true));
 }
@@ -579,18 +494,12 @@ function initNotificationsListener(role) {
     let q;
     if (role === 'admin') q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("status", "==", "pending_leader"));
     else q = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", currentUserName), where("status", "==", "pending_peer"));
-
     if(notifUnsubscribe) notifUnsubscribe();
     notifUnsubscribe = onSnapshot(q, (snap) => {
         const c = snap.size;
-        const badge = document.getElementById('globalBadge');
-        if(badge) {
-            badge.textContent = c;
-            badge.className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
-        }
-        
+        document.getElementById('globalBadge').textContent = c;
+        document.getElementById('globalBadge').className = c > 0 ? "absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border border-[#0F1020]" : "hidden";
         const list = document.getElementById('globalList');
-        if(!list) return;
         list.innerHTML = '';
         if(c === 0) list.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">Nada pendente.</p>';
         snap.forEach(d => {
@@ -649,4 +558,10 @@ function initGlobal() {
     }
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
-function initSelect() { /*...*/ }
+function initSelect() {
+    const s = document.getElementById('employeeSelect');
+    if(!s) return;
+    s.innerHTML = '<option value="">Selecione...</option>';
+    Object.keys(scheduleData).sort().forEach(n => { s.innerHTML += `<option value="${n}">${n}</option>`; });
+    s.onchange = (e) => updatePersonalView(e.target.value);
+}
