@@ -2,7 +2,7 @@
 import { state, pad } from './config.js';
 import * as Admin from './admin-module.js';
 
-// --- VISUALIZAÇÃO COMPARTILHADA (Escala Individual e Plantões) ---
+// --- VISUALIZAÇÃO COMPARTILHADA ---
 
 // 1. Escala Individual (Crachá + Calendário)
 export function updatePersonalView(name) {
@@ -16,7 +16,6 @@ export function updatePersonalView(name) {
     const shift = info.Turno || '--';
     const hours = info.Horário || info.Horario || '--';
 
-    // HTML do Crachá
     const card = document.getElementById('personalInfoCard');
     if(card) {
         card.innerHTML = `
@@ -88,7 +87,6 @@ export function updateWeekendTable(targetName) {
                 if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
             });
 
-            // Lógica: Admin (null) vê tudo. Colaborador só vê se estiver na lista.
             const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
 
             if (shouldShow) {
@@ -115,14 +113,35 @@ export function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão.</p>';
 }
 
-// Click Handler Global
-window.handleCellClick = (name, dayIndex) => {
-    if(state.isAdmin) {
-        Admin.handleAdminCellClick(name, dayIndex);
-    } else {
-        // Import dinâmica para evitar ciclo ou chamada direta se possível
-        import('./collab-module.js').then(module => {
-            module.handleCollabCellClick(name, dayIndex);
-        });
+// 3. Controle das Sub-Abas (Trocas) [NOVA FUNÇÃO ADICIONADA]
+export function switchSubTab(type) {
+    state.activeRequestType = type;
+
+    // Atualiza classes visuais
+    const map = {
+        'troca_dia_trabalho': 'subTabWork',
+        'troca_folga': 'subTabOff',
+        'troca_turno': 'subTabShift'
+    };
+    
+    // Remove active de todos
+    Object.values(map).forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.remove('sub-tab-active');
+    });
+
+    // Adiciona active ao atual
+    const activeEl = document.getElementById(map[type]);
+    if(activeEl) activeEl.classList.add('sub-tab-active');
+
+    // Atualiza Texto do Botão Principal
+    const btnLabel = document.getElementById('btnNewRequestLabel');
+    if(btnLabel) {
+        const labels = {
+            'troca_dia_trabalho': 'Solicitar Troca de Dia',
+            'troca_folga': 'Solicitar Troca de Folga',
+            'troca_turno': 'Solicitar Troca de Turno'
+        };
+        btnLabel.textContent = labels[type];
     }
-};
+}
