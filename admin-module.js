@@ -1,11 +1,14 @@
 // admin-module.js
 import { db, state, isWorkingTime, pad, daysOfWeek } from './config.js';
-import { doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { updatePersonalView, updateWeekendTable } from './main.js';
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { updatePersonalView, updateWeekendTable } from './ui.js';
 
 export function initAdminUI() {
-    document.getElementById('adminToolbar').classList.remove('hidden');
-    document.getElementById('adminEditHint').classList.remove('hidden');
+    const toolbar = document.getElementById('adminToolbar');
+    const hint = document.getElementById('adminEditHint');
+    
+    if(toolbar) toolbar.classList.remove('hidden');
+    if(hint) hint.classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
 
     // Mostra abas corretas
@@ -49,6 +52,12 @@ export function populateEmployeeSelect() {
     };
 }
 
+export function handleAdminCellClick(name, dayIndex) {
+    // Lógica futura de edição para admin
+    console.log("Admin clicou:", name, dayIndex);
+    // Aqui você pode adicionar um prompt para mudar o status manualmente
+}
+
 export function renderDailyView() {
     // Atualiza Data Header
     const dateLabel = document.getElementById('currentDateLabel');
@@ -77,13 +86,15 @@ export function renderDailyView() {
             }
         }
         else if(st.includes('OFF')) {
-            os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+             os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
         }
         else if(st === 'FE') {
-            totalVacation++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
+            totalVacation++;
+            vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
         }
         else {
-            o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
+            o++;
+            lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
         }
     });
 
@@ -109,5 +120,5 @@ export async function saveToCloud() {
         document.getElementById('saveStatus').textContent = "Sincronizado";
         document.getElementById('saveStatus').classList.remove('text-orange-400');
         btn.innerHTML = 'Salvar';
-    } catch (e) { alert("Erro ao salvar"); }
+    } catch (e) { alert("Erro ao salvar: " + e.message); }
 }
