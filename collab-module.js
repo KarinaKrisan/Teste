@@ -1,6 +1,6 @@
 import { db, state, pad } from './config.js';
-import { addDoc, collection, serverTimestamp, query, where, onSnapshot, updateDoc, doc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { updatePersonalView, updateWeekendTable } from './main.js';
+import { addDoc, collection, serverTimestamp, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { updatePersonalView } from './ui.js'; // Alterado para ui.js
 
 // --- INICIALIZAÇÃO DA UI ---
 export function initCollabUI() {
