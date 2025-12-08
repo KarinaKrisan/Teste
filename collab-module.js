@@ -1,6 +1,7 @@
+// collab-module.js
 import { db, state, pad } from './config.js';
 import { addDoc, collection, serverTimestamp, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { updatePersonalView } from './ui.js'; // Alterado para ui.js
+import { updatePersonalView, updateWeekendTable } from './ui.js'; // [Adicionado updateWeekendTable]
 
 // --- INICIALIZAÇÃO DA UI ---
 export function initCollabUI() {
@@ -10,8 +11,10 @@ export function initCollabUI() {
     
     // 2. Mostra Saudação
     const welcome = document.getElementById('welcomeUser');
-    welcome.textContent = `Olá, ${state.profile.name}`;
-    welcome.classList.remove('hidden');
+    if(welcome) {
+        welcome.textContent = `Olá, ${state.profile.name}`;
+        welcome.classList.remove('hidden');
+    }
 
     // 3. Configura Abas (Esconde as de admin, mostra as de colab)
     document.getElementById('tabDaily').classList.add('hidden');
@@ -22,6 +25,9 @@ export function initCollabUI() {
 
     // 4. Carrega dados visuais iniciais
     updatePersonalView(state.profile.name);
+    
+    // [NOVO] Carrega a tabela de plantões de fim de semana (passar null mostra todos)
+    updateWeekendTable(null); 
     
     // 5. Inicia Listeners
     initRequestsTab(); // Escuta as trocas em tempo real
