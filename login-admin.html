@@ -38,13 +38,19 @@
                         <input type="email" id="emailInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input" placeholder="admin@exemplo.com" required>
                     </div>
                 </div>
+                
                 <div>
                     <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Senha</label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i class="fas fa-lock text-gray-500"></i></div>
-                        <input type="password" id="passwordInput" class="w-full pl-10 pr-4 py-3 rounded-lg border outline-none transition-colors login-input" placeholder="••••••••" required>
+                        <input type="password" id="passwordInput" class="w-full pl-10 pr-10 py-3 rounded-lg border outline-none transition-colors login-input" placeholder="••••••••" required>
+                        
+                        <button type="button" id="togglePassword" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-purple-400 transition-colors focus:outline-none">
+                            <i class="fas fa-eye"></i>
+                        </button>
                     </div>
                 </div>
+
                 <div id="loginError" class="hidden bg-red-900/20 border border-red-500/30 text-red-400 text-sm p-3 rounded-lg flex items-center"><i class="fas fa-exclamation-circle mr-2"></i><span id="errorText">Erro.</span></div>
                 <button type="submit" id="btnLogin" class="w-full btn-gradient text-white font-bold py-3.5 rounded-lg shadow-lg flex justify-center items-center gap-2 mt-2"><span>Entrar no Painel</span><i class="fas fa-arrow-right"></i></button>
             </form>
@@ -70,6 +76,21 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // LÓGICA DO OLHO MÁGICO
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('passwordInput');
+
+        togglePassword.addEventListener('click', function () {
+            // Alterna o tipo do input
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            
+            // Alterna o ícone
+            this.querySelector('i').classList.toggle('fa-eye');
+            this.querySelector('i').classList.toggle('fa-eye-slash');
+        });
+
+        // LÓGICA DE LOGIN
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
@@ -81,18 +102,16 @@
             errorDiv.classList.add('hidden');
 
             try {
-                // 1. Autenticação Básica
                 const userCredential = await signInWithEmailAndPassword(auth, email, pass);
                 const user = userCredential.user;
 
-                // 2. Verificação de Role (administradores)
                 const docRef = doc(db, "administradores", user.uid);
                 const docSnap = await getDoc(docRef);
 
                 if (docSnap.exists()) {
                     window.location.href = "index.html";
                 } else {
-                    await signOut(auth); // Desloga se não for admin
+                    await signOut(auth);
                     throw new Error("Acesso negado: Usuário não é administrador.");
                 }
 
