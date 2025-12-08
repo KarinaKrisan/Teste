@@ -2,6 +2,8 @@
 import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
+// Importamos a nova função switchSubTab aqui
+import { updatePersonalView, switchSubTab } from './ui.js'; 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
@@ -23,7 +25,6 @@ if (ds) ds.addEventListener('input', e => {
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
-        // Se não estiver nas páginas públicas, redireciona
         if (!window.location.pathname.includes('start.html') && 
             !window.location.pathname.includes('login-')) {
             window.location.href = "start.html";
@@ -69,7 +70,6 @@ async function loadData() {
         state.rawSchedule = snap.exists() ? snap.data() : {};
         processScheduleData();
         
-        // Se for admin, já renderiza a daily view
         if(state.isAdmin) Admin.renderDailyView();
         
     } catch (e) { console.error("Erro loadData:", e); }
@@ -100,10 +100,23 @@ function switchTab(tabName) {
     if(view) view.classList.remove('hidden');
 }
 
-// Listeners de Aba
 document.querySelectorAll('.tab-button').forEach(b => {
     b.addEventListener('click', () => {
         if(!state.isAdmin && b.dataset.tab === 'daily') return;
         switchTab(b.dataset.tab);
     });
 });
+
+// EXPOR FUNÇÕES GLOBAIS (Necessário para onclick no HTML)
+window.handleCellClick = (name, dayIndex) => {
+    if(state.isAdmin) {
+        Admin.handleAdminCellClick(name, dayIndex);
+    } else {
+        import('./collab-module.js').then(module => {
+            module.handleCollabCellClick(name, dayIndex);
+        });
+    }
+};
+
+// [AQUI ESTÁ A CORREÇÃO] Conecta a função ao window
+window.switchSubTab = switchSubTab;
