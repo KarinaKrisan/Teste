@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, where, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
+// --- CONFIGURAÇÃO ---
 const firebaseConfig = {
   apiKey: "AIzaSyCBKSPH7lfUt0VsQPhJX3a0CQ2wYcziQvM",
   authDomain: "dadosescala.firebaseapp.com",
@@ -15,7 +16,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Estado
+// --- ESTADO GLOBAL ---
 let isAdmin = false;
 let hasUnsavedChanges = false;
 let currentUserName = null;
@@ -33,7 +34,7 @@ const statusMap = { 'T':'Trabalhando','F':'Folga','FS':'Folga Sáb','FD':'Folga 
 const daysOfWeek = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 
-// --- CONTROLE DE UI ---
+// --- CONTROLE DE UI / LOADING ---
 function hideLoader() {
     const overlay = document.getElementById('appLoadingOverlay');
     if(overlay) {
@@ -41,8 +42,9 @@ function hideLoader() {
         setTimeout(() => overlay.classList.add('hidden'), 500);
     }
 }
-setTimeout(hideLoader, 5000); 
+setTimeout(hideLoader, 5000); // Trava de segurança (5s)
 
+// --- HELPER HORÁRIO ---
 function isWorkingTime(timeRange) {
     if (!timeRange || typeof timeRange !== 'string') return true;
     const times = timeRange.match(/(\d{1,2}:\d{2})/g);
@@ -65,11 +67,14 @@ document.getElementById('btnLogout').addEventListener('click', async () => { awa
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
-        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) window.location.href = "start.html";
+        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) {
+            window.location.href = "start.html";
+        }
         return;
     }
 
     try {
+        // Verifica se é Admin
         const adminRef = doc(db, "administradores", user.uid);
         const adminSnap = await getDoc(adminRef);
 
@@ -79,6 +84,7 @@ onAuthStateChanged(auth, async (user) => {
             setupAdminUI();
             initNotificationsListener('admin');
         } else {
+            // Verifica se é Colaborador
             const collabRef = doc(db, "colaboradores", user.uid);
             const collabSnap = await getDoc(collabRef);
             
@@ -88,12 +94,14 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserName = currentUserProfile.name;
                 setupCollaboratorUI(currentUserName);
                 initNotificationsListener('peer');
+            } else {
+                console.error("ERRO: Usuário sem perfil.");
             }
         }
         notificationWrapper.classList.remove('hidden');
     } catch (e) { console.error("Erro Auth:", e); } 
     finally { 
-        loadDataFromCloud(); 
+        loadDataFromCloud(); // Carrega dados
     }
 });
 
@@ -101,12 +109,8 @@ function setupAdminUI() {
     adminToolbar.classList.remove('hidden');
     document.getElementById('adminEditHint').classList.remove('hidden');
     document.body.style.paddingBottom = "100px";
-    
-    // Configura Abas do Admin
     document.getElementById('tabDaily').classList.remove('hidden');
-    document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); // Admin não pede troca por aqui
-    
+    document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
     switchTab('daily');
 }
@@ -116,15 +120,10 @@ function setupCollaboratorUI(name) {
     document.getElementById('adminEditHint').classList.add('hidden');
     document.getElementById('welcomeUser').textContent = `Olá, ${name}`;
     document.getElementById('welcomeUser').classList.remove('hidden');
-
-    // Configura Abas do Colaborador
-    document.getElementById('tabDaily').classList.add('hidden'); // Esconde Visão Diária
-    document.getElementById('employeeSelectContainer').classList.add('hidden'); // Esconde seletor
-    
-    // MOSTRA AS ABAS CORRETAS
+    document.getElementById('tabDaily').classList.add('hidden');
+    document.getElementById('employeeSelectContainer').classList.add('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.remove('hidden'); // Central de Trocas VISÍVEL
-
+    document.getElementById('tabRequests').classList.remove('hidden');
     switchTab('personal');
 }
 
@@ -134,36 +133,65 @@ async function loadDataFromCloud() {
     try {
         const docRef = doc(db, "escalas", docId);
         const docSnap = await getDoc(docRef);
-        rawSchedule = docSnap.exists() ? docSnap.data() : {};
+        
+        if (docSnap.exists()) {
+            rawSchedule = docSnap.data();
+        } else {
+            rawSchedule = {}; // Mês sem escala ainda
+        }
+        
         processScheduleData(); 
+        
+        // Atualiza a tela
         updateDailyView();
         
         if(isAdmin) {
-            initSelect();
-            updateWeekendTable(null);
+            initSelect(); // <--- OBRIGATÓRIO: Popula o select do Admin
+            updateWeekendTable(null); // Admin vê todos os plantões
         } else if (currentUserName) {
-            updatePersonalView(currentUserName);
-            initRequestsTabListener(); // Inicia listener de trocas
+            updatePersonalView(currentUserName); // Carrega dados do colaborador logado
+            initRequestsTabListener(); 
         }
-    } catch (e) { console.error("Erro dados:", e); }
-    finally { hideLoader(); }
+    } catch (e) { 
+        console.error("Erro dados:", e); 
+    }
+    finally {
+        hideLoader();
+    }
 }
 
+// --- POPULAR DROPDOWN (CORRIGIDO) ---
 function initSelect() {
     const s = document.getElementById('employeeSelect');
     if(!s) return;
+    
+    // Limpa opções antigas (mantém a primeira "Selecione...")
     s.innerHTML = '<option value="">Selecione um colaborador...</option>';
+    
+    // Pega as chaves (nomes) da escala carregada
     const names = Object.keys(scheduleData).sort();
-    names.forEach(n => { 
+    
+    if (names.length === 0) {
+        // Se não tiver ninguém na escala, avisa
         const opt = document.createElement('option');
-        opt.value = n;
-        opt.text = n;
+        opt.text = "(Nenhuma escala encontrada)";
+        opt.disabled = true;
         s.add(opt);
-    });
+    } else {
+        names.forEach(n => { 
+            const opt = document.createElement('option');
+            opt.value = n;
+            opt.text = n;
+            s.add(opt);
+        });
+    }
+    
+    // Listener de mudança
     s.onchange = (e) => {
         const selectedName = e.target.value;
-        if(selectedName) updatePersonalView(selectedName);
-        else {
+        if(selectedName) {
+            updatePersonalView(selectedName);
+        } else {
             document.getElementById('personalInfoCard').classList.add('hidden');
             document.getElementById('calendarContainer').classList.add('hidden');
         }
@@ -229,15 +257,12 @@ window.switchSubTab = function(type) {
 };
 window.activeRequestType = 'troca_dia_trabalho';
 
-// Listener de Clique nas Abas (Corrigido para permitir Central de Trocas)
+// Listener de Clique nas Abas (Corrigido)
 document.querySelectorAll('.tab-button').forEach(b => {
     b.addEventListener('click', () => {
-        // Se for colaborador e tentar clicar em daily, bloqueia
+        // Se for admin, pode clicar em qualquer aba visível
+        // Se for colaborador, bloqueia a daily
         if(!isAdmin && b.dataset.tab === 'daily') return;
-        
-        // Se for admin e tentar clicar em requests (que está hidden via CSS mas por segurança), bloqueia
-        if(isAdmin && b.dataset.tab === 'requests') return;
-        
         switchTab(b.dataset.tab);
     });
 });
@@ -249,9 +274,6 @@ function updateDailyView() {
         const dow = new Date(selectedMonthObj.year, selectedMonthObj.month, currentDay).getDay();
         dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(currentDay)}/${pad(selectedMonthObj.month+1)}`;
     }
-    // ... Logica de listas diárias (mantida para Admin) ...
-    // Se precisar do código completo das listas verticais, me avise, mas ele já está correto na versão anterior.
-    // Vou incluir a versão simplificada para caber aqui:
     
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
@@ -262,21 +284,42 @@ function updateDailyView() {
     Object.keys(scheduleData).forEach(name=>{
         const emp = scheduleData[name];
         const st = emp.schedule[currentDay-1] || 'F';
+        
         if(st === 'T') {
-            const hours = emp.info.Horário || emp.info.Horario || '';
-            if (isWorkingTime(hours)) { w++; lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`; } 
-            else { os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`; }
+            const hours = emp.info.Horário || emp.info.Horario || emp.info.hours || '';
+            if (isWorkingTime(hours)) {
+                w++;
+                lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
+            } else {
+                os++;
+                lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+            }
         }
-        else if(st.includes('OFF')) { os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`; }
-        else if(st === 'FE') { totalVacation++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`; }
-        else { o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`; }
+        else if(st.includes('OFF')) {
+            os++;
+            lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+        }
+        else if(st === 'FE') {
+            totalVacation++;
+            vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
+        }
+        else {
+            o++;
+            lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
+        }
     });
 
     if(document.getElementById('kpiWorking')) {
-        document.getElementById('kpiWorking').textContent=w; document.getElementById('kpiOff').textContent=o;
-        document.getElementById('kpiVacation').textContent=totalVacation; document.getElementById('kpiOffShift').textContent=os;
-        document.getElementById('listWorking').innerHTML=lists.w; document.getElementById('listOffShift').innerHTML=lists.os;
-        document.getElementById('listOff').innerHTML=lists.o; document.getElementById('listVacation').innerHTML=vacationPills;
+        document.getElementById('kpiWorking').textContent=w; 
+        document.getElementById('kpiOff').textContent=o;
+        document.getElementById('kpiVacation').textContent = totalVacation;
+        document.getElementById('kpiOffShift').textContent = os;
+
+        document.getElementById('listWorking').innerHTML = lists.w || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém trabalhando agora.</span>';
+        document.getElementById('listOffShift').innerHTML = lists.os || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém fora de expediente.</span>';
+        document.getElementById('listOff').innerHTML = lists.o || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de folga.</span>';
+        document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém de férias hoje.</span>';
+        
         updateDailyChartDonut(w, o, os, totalVacation);
     }
 }
@@ -285,12 +328,14 @@ function updateDailyChartDonut(w, o, os, v) {
     const canvas = document.getElementById('dailyChart');
     if(!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (dailyChart) { dailyChart.destroy(); dailyChart = null; }
-    dailyChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: { labels: ['Trabalhando','Folga','Encerrado','Férias'], datasets:[{ data: [w,o,os,v], backgroundColor: ['#34D399','#FBBF24','#E879F9','#F87171'], borderWidth: 0 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position:'bottom', labels: { color: '#94A3B8' } } } }
-    });
+    if (dailyChart && dailyChart.config.type !== 'doughnut') { dailyChart.destroy(); dailyChart = null; }
+    if (!dailyChart) {
+        dailyChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: ['Trabalhando','Folga','Encerrado','Férias'], datasets:[{ data: [w,o,os,v], backgroundColor: ['#34D399','#FBBF24','#E879F9','#F87171'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position:'bottom', labels: { color: '#94A3B8' } } } }
+        });
+    } else { dailyChart.data.datasets[0].data = [w,o,os,v]; dailyChart.update(); }
 }
 
 function updatePersonalView(name) {
@@ -622,3 +667,4 @@ function initGlobal() {
     }
 }
 document.addEventListener('DOMContentLoaded', initGlobal);
+function initSelect() { /*...*/ }
