@@ -1,8 +1,9 @@
 // main.js - Arquivo Principal
-import { db, auth, state, hideLoader } from './config.js';
+import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
-import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTable } from './ui.js'; 
+// Importamos a nova função switchSubTab aqui
+import { updatePersonalView, switchSubTab } from './ui.js'; 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
@@ -32,31 +33,13 @@ onAuthStateChanged(auth, async (user) => {
     }
     state.currentUser = user;
 
-    // Inicializa Seletor de Mês
-    renderMonthSelector(async (newMonthObj) => {
-        const btnLoad = document.querySelector('select'); 
-        if(btnLoad) btnLoad.disabled = true;
-        
-        state.selectedMonthObj = newMonthObj;
-        state.currentDay = 1; 
-        
-        await loadData();
-        reloadCurrentView();
-        
-        if(btnLoad) btnLoad.disabled = false;
-    });
-
     try {
         // Tenta Admin
         const adminSnap = await getDoc(doc(db, "administradores", user.uid));
         if (adminSnap.exists()) {
             state.isAdmin = true;
             await loadData(); 
-            Admin.initAdminUI();
-            
-            // [CORREÇÃO] Renderiza a visão diária imediatamente após carregar
-            Admin.renderDailyView(); 
-            
+            Admin.initAdminUI(); 
             switchTab('daily');
         } else {
             // Tenta Colab
@@ -82,51 +65,27 @@ onAuthStateChanged(auth, async (user) => {
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    
-    // Limpa dados antigos
-    state.rawSchedule = {};
-    state.scheduleData = {};
-
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
         processScheduleData();
+        
+        if(state.isAdmin) Admin.renderDailyView();
+        
     } catch (e) { console.error("Erro loadData:", e); }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
-    
-    // Atualiza Slider
     const slider = document.getElementById('dateSlider');
-    if (slider) { 
-        slider.max = totalDays; 
-        if(state.currentDay > totalDays) state.currentDay = 1;
-        slider.value = state.currentDay; 
-    }
+    if (slider) { slider.max = totalDays; slider.value = state.currentDay; }
 
-    if(state.rawSchedule && Object.keys(state.rawSchedule).length > 0) {
+    if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(name => {
             let s = state.rawSchedule[name].calculatedSchedule || new Array(totalDays).fill('F');
             state.scheduleData[name] = { info: state.rawSchedule[name], schedule: s };
         });
-    }
-}
-
-function reloadCurrentView() {
-    if(state.isAdmin) {
-        Admin.renderDailyView();
-        const select = document.getElementById('employeeSelect');
-        if(select && select.value) {
-            updatePersonalView(select.value);
-        }
-        Admin.populateEmployeeSelect(); 
-        updateWeekendTable(null);
-    } else {
-        updatePersonalView(state.profile.name);
-        updateWeekendTable(null); 
-        Collab.initCollabUI();
     }
 }
 
@@ -148,6 +107,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
+// EXPOR FUNÇÕES GLOBAIS (Necessário para onclick no HTML)
 window.handleCellClick = (name, dayIndex) => {
     if(state.isAdmin) {
         Admin.handleAdminCellClick(name, dayIndex);
@@ -158,4 +118,5 @@ window.handleCellClick = (name, dayIndex) => {
     }
 };
 
+// [AQUI ESTÁ A CORREÇÃO] Conecta a função ao window
 window.switchSubTab = switchSubTab;
