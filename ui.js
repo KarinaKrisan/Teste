@@ -1,6 +1,39 @@
 // ui.js - Lógica visual compartilhada
-import { state, pad } from './config.js';
+import { state, pad, monthNames } from './config.js';
 import * as Admin from './admin-module.js';
+
+// --- SELETOR DE MÊS (NOVO) ---
+export function renderMonthSelector(onPrev, onNext) {
+    const container = document.getElementById('monthSelectorContainer');
+    if (!container) return;
+
+    const currentM = state.selectedMonthObj;
+    const label = `${monthNames[currentM.month]} ${currentM.year}`;
+    
+    // Verifica limites para desabilitar botões
+    const currentIndex = import('./config.js').then(m => m.availableMonths.findIndex(x => x.year === currentM.year && x.month === currentM.month));
+
+    // HTML do Seletor
+    container.innerHTML = `
+        <div class="flex items-center bg-[#1A1C2E] border border-[#2E3250] rounded-lg p-1 shadow-lg">
+            <button id="btnMonthPrev" class="w-8 h-8 flex items-center justify-center rounded hover:bg-[#2E3250] text-gray-400 hover:text-white transition-colors">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            
+            <div class="px-4 text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 min-w-[140px] text-center uppercase tracking-wider">
+                ${label}
+            </div>
+
+            <button id="btnMonthNext" class="w-8 h-8 flex items-center justify-center rounded hover:bg-[#2E3250] text-gray-400 hover:text-white transition-colors">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    `;
+
+    // Listeners
+    document.getElementById('btnMonthPrev').onclick = onPrev;
+    document.getElementById('btnMonthNext').onclick = onNext;
+}
 
 // --- VISUALIZAÇÃO COMPARTILHADA ---
 
@@ -69,7 +102,10 @@ export function updateWeekendTable(targetName) {
     
     container.innerHTML = '';
     
-    if(Object.keys(state.scheduleData).length === 0) return;
+    if(Object.keys(state.scheduleData).length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado para este mês.</p>';
+        return;
+    }
     
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
 
@@ -113,7 +149,7 @@ export function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão.</p>';
 }
 
-// 3. Controle das Sub-Abas (Trocas) [NOVA FUNÇÃO ADICIONADA]
+// 3. Controle das Sub-Abas (Trocas)
 export function switchSubTab(type) {
     state.activeRequestType = type;
 
@@ -124,17 +160,14 @@ export function switchSubTab(type) {
         'troca_turno': 'subTabShift'
     };
     
-    // Remove active de todos
     Object.values(map).forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.remove('sub-tab-active');
     });
 
-    // Adiciona active ao atual
     const activeEl = document.getElementById(map[type]);
     if(activeEl) activeEl.classList.add('sub-tab-active');
 
-    // Atualiza Texto do Botão Principal
     const btnLabel = document.getElementById('btnNewRequestLabel');
     if(btnLabel) {
         const labels = {
