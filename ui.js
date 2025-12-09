@@ -1,12 +1,48 @@
 // ui.js - Lógica visual compartilhada
-import { state, pad } from './config.js';
+import { state, pad, availableMonths, monthNames } from './config.js';
 import * as Admin from './admin-module.js';
+
+// --- SELETOR DE MÊS (NOVO) ---
+export function renderMonthSelector(onMonthChange) {
+    const container = document.getElementById('monthSelectorContainer');
+    if(!container) return;
+
+    // Limpa anterior
+    container.innerHTML = '';
+
+    const select = document.createElement('select');
+    select.className = "bg-[#1A1C2E] border border-cronos-border text-white text-sm rounded-xl p-2.5 outline-none focus:border-purple-500 shadow-lg cursor-pointer min-w-[160px]";
+
+    availableMonths.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify(m);
+        opt.textContent = `${monthNames[m.month]} ${m.year}`;
+        
+        // Seleciona o mês atual do estado
+        if(m.year === state.selectedMonthObj.year && m.month === state.selectedMonthObj.month) {
+            opt.selected = true;
+        }
+        select.appendChild(opt);
+    });
+
+    select.addEventListener('change', (e) => {
+        const newMonth = JSON.parse(e.target.value);
+        if(onMonthChange) onMonthChange(newMonth);
+    });
+
+    container.appendChild(select);
+}
 
 // --- VISUALIZAÇÃO COMPARTILHADA ---
 
 // 1. Escala Individual (Crachá + Calendário)
 export function updatePersonalView(name) {
-    if(!name || !state.scheduleData[name]) return;
+    if(!name || !state.scheduleData[name]) {
+        // Se não tiver dados para esse nome (ex: mês novo sem escala), limpa a tela
+        document.getElementById('personalInfoCard').innerHTML = '';
+        document.getElementById('calendarGrid').innerHTML = '<p class="col-span-7 text-center text-gray-500 py-8 italic">Sem escala lançada para este mês.</p>';
+        return;
+    }
     const emp = state.scheduleData[name];
     
     // Fallbacks para dados
@@ -19,7 +55,7 @@ export function updatePersonalView(name) {
     const card = document.getElementById('personalInfoCard');
     if(card) {
         card.innerHTML = `
-        <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
+        <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden animate-fade-in">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
             <div class="p-6">
                 <div class="flex items-center gap-5">
@@ -55,7 +91,7 @@ export function updateCalendar(name, schedule) {
     
     schedule.forEach((st, i) => {
         grid.innerHTML += `
-        <div onclick="window.handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group">
+        <div onclick="window.handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group transition-all hover:scale-[1.02]">
             <span class="text-gray-500 text-xs">${i+1}</span>
             <div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div>
         </div>`;
@@ -69,7 +105,10 @@ export function updateWeekendTable(targetName) {
     
     container.innerHTML = '';
     
-    if(Object.keys(state.scheduleData).length === 0) return;
+    if(Object.keys(state.scheduleData).length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado de plantão para este mês.</p>';
+        return;
+    }
     
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
 
@@ -94,7 +133,7 @@ export function updateWeekendTable(targetName) {
                 const sunDate = hasSunday ? `${pad(d+1)}/${pad(state.selectedMonthObj.month+1)}` : '-';
                 
                 container.insertAdjacentHTML('beforeend', `
-                <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-lg overflow-hidden flex flex-col">
+                <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-lg overflow-hidden flex flex-col animate-fade-in">
                     <div class="bg-[#0F1020] p-3 border-b border-cronos-border flex justify-between items-center"><span class="text-sky-400 font-bold text-xs uppercase tracking-wider">Fim de Semana</span></div>
                     <div class="p-4 space-y-4 flex-1">
                         <div>
@@ -110,38 +149,25 @@ export function updateWeekendTable(targetName) {
             }
         }
     }
-    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão.</p>';
+    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// 3. Controle das Sub-Abas (Trocas) [NOVA FUNÇÃO ADICIONADA]
+// 3. Controle das Sub-Abas (Trocas)
 export function switchSubTab(type) {
     state.activeRequestType = type;
-
-    // Atualiza classes visuais
-    const map = {
-        'troca_dia_trabalho': 'subTabWork',
-        'troca_folga': 'subTabOff',
-        'troca_turno': 'subTabShift'
-    };
+    const map = { 'troca_dia_trabalho': 'subTabWork', 'troca_folga': 'subTabOff', 'troca_turno': 'subTabShift' };
     
-    // Remove active de todos
     Object.values(map).forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.remove('sub-tab-active');
     });
 
-    // Adiciona active ao atual
     const activeEl = document.getElementById(map[type]);
     if(activeEl) activeEl.classList.add('sub-tab-active');
 
-    // Atualiza Texto do Botão Principal
     const btnLabel = document.getElementById('btnNewRequestLabel');
     if(btnLabel) {
-        const labels = {
-            'troca_dia_trabalho': 'Solicitar Troca de Dia',
-            'troca_folga': 'Solicitar Troca de Folga',
-            'troca_turno': 'Solicitar Troca de Turno'
-        };
+        const labels = { 'troca_dia_trabalho': 'Solicitar Troca de Dia', 'troca_folga': 'Solicitar Troca de Folga', 'troca_turno': 'Solicitar Troca de Turno' };
         btnLabel.textContent = labels[type];
     }
 }
