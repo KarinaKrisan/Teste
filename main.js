@@ -15,7 +15,7 @@ if(btnLogout) {
     });
 }
 
-// Slider de data (Visão Diária)
+// Slider de data
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
     state.currentDay = parseInt(e.target.value); 
@@ -32,14 +32,13 @@ onAuthStateChanged(auth, async (user) => {
     }
     state.currentUser = user;
 
-    // Inicializa Seletor de Mês (com callback de reload)
+    // Inicializa Seletor de Mês
     renderMonthSelector(async (newMonthObj) => {
-        // Mostra loading rápido
-        const btnLoad = document.querySelector('select'); // Feedback visual simples
+        const btnLoad = document.querySelector('select'); 
         if(btnLoad) btnLoad.disabled = true;
         
         state.selectedMonthObj = newMonthObj;
-        state.currentDay = 1; // Reseta para o dia 1 ao mudar o mês
+        state.currentDay = 1; 
         
         await loadData();
         reloadCurrentView();
@@ -53,7 +52,11 @@ onAuthStateChanged(auth, async (user) => {
         if (adminSnap.exists()) {
             state.isAdmin = true;
             await loadData(); 
-            Admin.initAdminUI(); 
+            Admin.initAdminUI();
+            
+            // [CORREÇÃO] Renderiza a visão diária imediatamente após carregar
+            Admin.renderDailyView(); 
+            
             switchTab('daily');
         } else {
             // Tenta Colab
@@ -79,9 +82,8 @@ onAuthStateChanged(auth, async (user) => {
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando:", docId);
     
-    // Limpa dados antigos para evitar mistura visual
+    // Limpa dados antigos
     state.rawSchedule = {};
     state.scheduleData = {};
 
@@ -94,13 +96,13 @@ async function loadData() {
 
 function processScheduleData() {
     state.scheduleData = {};
-    // Calcula total de dias do mês selecionado
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
     // Atualiza Slider
     const slider = document.getElementById('dateSlider');
     if (slider) { 
         slider.max = totalDays; 
+        if(state.currentDay > totalDays) state.currentDay = 1;
         slider.value = state.currentDay; 
     }
 
@@ -112,28 +114,19 @@ function processScheduleData() {
     }
 }
 
-// Atualiza a tela baseada em quem está logado
 function reloadCurrentView() {
     if(state.isAdmin) {
-        // Se estiver na aba Daily, atualiza ela
         Admin.renderDailyView();
-        
-        // Se o select de funcionário estiver selecionado na aba Pessoal, atualiza também
         const select = document.getElementById('employeeSelect');
         if(select && select.value) {
             updatePersonalView(select.value);
         }
-        // Atualiza a lista do select de funcionários (pois a equipe pode mudar de mês a mês)
         Admin.populateEmployeeSelect(); 
-        
-        updateWeekendTable(null); // Admin vê todos
+        updateWeekendTable(null);
     } else {
-        // Colaborador
         updatePersonalView(state.profile.name);
-        updateWeekendTable(null); // Passa null para ver a visão geral, ou state.profile.name para ver só o seu
-        // Nota: A lógica de requests tab também se atualiza sozinha pois o listener do Firestore depende do ID do documento que mudamos?
-        // Precisamos reiniciar os listeners de requests se o mês mudar.
-        Collab.initCollabUI(); // Reinicia listeners para o novo mês
+        updateWeekendTable(null); 
+        Collab.initCollabUI();
     }
 }
 
@@ -155,7 +148,6 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// EXPOR FUNÇÕES GLOBAIS
 window.handleCellClick = (name, dayIndex) => {
     if(state.isAdmin) {
         Admin.handleAdminCellClick(name, dayIndex);
