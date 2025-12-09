@@ -2,8 +2,7 @@
 import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
-// Importamos a nova função switchSubTab aqui
-import { updatePersonalView, switchSubTab } from './ui.js'; 
+import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTable } from './ui.js'; 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
@@ -16,7 +15,7 @@ if(btnLogout) {
     });
 }
 
-// Slider de data
+// Slider de data (Visão Diária)
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
     state.currentDay = parseInt(e.target.value); 
@@ -32,6 +31,9 @@ onAuthStateChanged(auth, async (user) => {
         return;
     }
     state.currentUser = user;
+
+    // Renderiza o seletor de mês pela primeira vez
+    updateMonthSelectorUI();
 
     try {
         // Tenta Admin
@@ -62,24 +64,95 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
+// --- LÓGICA DE TROCA DE MÊS ---
+async function handleMonthChange(direction) {
+    const currentIndex = availableMonths.findIndex(
+        m => m.year === state.selectedMonthObj.year && m.month === state.selectedMonthObj.month
+    );
+
+    const newIndex = currentIndex + direction;
+
+    // Verifica se existe mês anterior ou próximo
+    if (newIndex >= 0 && newIndex < availableMonths.length) {
+        // 1. Atualiza Estado
+        state.selectedMonthObj = availableMonths[newIndex];
+        
+        // 2. Feedback Visual
+        const overlay = document.getElementById('appLoadingOverlay');
+        overlay.classList.remove('hidden', 'opacity-0');
+        
+        // 3. Atualiza Seletor
+        updateMonthSelectorUI();
+
+        // 4. Carrega Novos Dados
+        await loadData();
+
+        // 5. Atualiza Interface Específica
+        if (state.isAdmin) {
+            Admin.renderDailyView();
+            // Se tiver alguém selecionado no select, atualiza a visão dele
+            const selectedEmp = document.getElementById('employeeSelect').value;
+            if (selectedEmp) {
+                updatePersonalView(selectedEmp);
+                updateWeekendTable(null);
+            }
+        } else {
+            // Colaborador
+            updatePersonalView(state.profile.name);
+            updateWeekendTable(null);
+            // Se a aba de trocas estiver ativa, recarrega
+            Collab.initCollabUI(); 
+        }
+
+        // Esconde loading
+        setTimeout(() => {
+            overlay.classList.add('opacity-0');
+            setTimeout(() => overlay.classList.add('hidden'), 500);
+        }, 500);
+    }
+}
+
+function updateMonthSelectorUI() {
+    renderMonthSelector(
+        () => handleMonthChange(-1), // Prev
+        () => handleMonthChange(1)   // Next
+    );
+}
+
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    console.log("Carregando mês:", docId);
+    
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
-        processScheduleData();
         
-        if(state.isAdmin) Admin.renderDailyView();
+        // Se o mês não existe no banco, limpa os dados da memória
+        if (!snap.exists()) {
+            console.warn("Nenhum dado encontrado para", docId);
+            state.scheduleData = {};
+        } else {
+            processScheduleData();
+        }
         
-    } catch (e) { console.error("Erro loadData:", e); }
+    } catch (e) { 
+        console.error("Erro loadData:", e); 
+        state.scheduleData = {};
+    }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
+    
+    // Atualiza slider da Home para o limite do novo mês
     const slider = document.getElementById('dateSlider');
-    if (slider) { slider.max = totalDays; slider.value = state.currentDay; }
+    if (slider) { 
+        slider.max = totalDays; 
+        if (state.currentDay > totalDays) state.currentDay = totalDays; // Corrige se o dia selecionado for 31 e o mês tiver 30
+        slider.value = state.currentDay; 
+    }
 
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(name => {
@@ -107,7 +180,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// EXPOR FUNÇÕES GLOBAIS (Necessário para onclick no HTML)
+// EXPOR FUNÇÕES GLOBAIS
 window.handleCellClick = (name, dayIndex) => {
     if(state.isAdmin) {
         Admin.handleAdminCellClick(name, dayIndex);
@@ -118,5 +191,4 @@ window.handleCellClick = (name, dayIndex) => {
     }
 };
 
-// [AQUI ESTÁ A CORREÇÃO] Conecta a função ao window
 window.switchSubTab = switchSubTab;
