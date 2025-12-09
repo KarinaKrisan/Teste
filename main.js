@@ -1,9 +1,8 @@
 // main.js - Arquivo Principal
-import { db, auth, state, hideLoader, availableMonths } from './config.js';
+import { db, auth, state, hideLoader } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
-// Importamos a nova função switchSubTab aqui
-import { updatePersonalView, switchSubTab } from './ui.js'; 
+import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTable } from './ui.js'; 
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
@@ -16,7 +15,7 @@ if(btnLogout) {
     });
 }
 
-// Slider de data
+// Slider de data (Visão Diária)
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
     state.currentDay = parseInt(e.target.value); 
@@ -32,6 +31,21 @@ onAuthStateChanged(auth, async (user) => {
         return;
     }
     state.currentUser = user;
+
+    // Inicializa Seletor de Mês (com callback de reload)
+    renderMonthSelector(async (newMonthObj) => {
+        // Mostra loading rápido
+        const btnLoad = document.querySelector('select'); // Feedback visual simples
+        if(btnLoad) btnLoad.disabled = true;
+        
+        state.selectedMonthObj = newMonthObj;
+        state.currentDay = 1; // Reseta para o dia 1 ao mudar o mês
+        
+        await loadData();
+        reloadCurrentView();
+        
+        if(btnLoad) btnLoad.disabled = false;
+    });
 
     try {
         // Tenta Admin
@@ -65,27 +79,61 @@ onAuthStateChanged(auth, async (user) => {
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    console.log("Carregando:", docId);
+    
+    // Limpa dados antigos para evitar mistura visual
+    state.rawSchedule = {};
+    state.scheduleData = {};
+
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
         processScheduleData();
-        
-        if(state.isAdmin) Admin.renderDailyView();
-        
     } catch (e) { console.error("Erro loadData:", e); }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
+    // Calcula total de dias do mês selecionado
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
+    
+    // Atualiza Slider
     const slider = document.getElementById('dateSlider');
-    if (slider) { slider.max = totalDays; slider.value = state.currentDay; }
+    if (slider) { 
+        slider.max = totalDays; 
+        slider.value = state.currentDay; 
+    }
 
-    if(state.rawSchedule) {
+    if(state.rawSchedule && Object.keys(state.rawSchedule).length > 0) {
         Object.keys(state.rawSchedule).forEach(name => {
             let s = state.rawSchedule[name].calculatedSchedule || new Array(totalDays).fill('F');
             state.scheduleData[name] = { info: state.rawSchedule[name], schedule: s };
         });
+    }
+}
+
+// Atualiza a tela baseada em quem está logado
+function reloadCurrentView() {
+    if(state.isAdmin) {
+        // Se estiver na aba Daily, atualiza ela
+        Admin.renderDailyView();
+        
+        // Se o select de funcionário estiver selecionado na aba Pessoal, atualiza também
+        const select = document.getElementById('employeeSelect');
+        if(select && select.value) {
+            updatePersonalView(select.value);
+        }
+        // Atualiza a lista do select de funcionários (pois a equipe pode mudar de mês a mês)
+        Admin.populateEmployeeSelect(); 
+        
+        updateWeekendTable(null); // Admin vê todos
+    } else {
+        // Colaborador
+        updatePersonalView(state.profile.name);
+        updateWeekendTable(null); // Passa null para ver a visão geral, ou state.profile.name para ver só o seu
+        // Nota: A lógica de requests tab também se atualiza sozinha pois o listener do Firestore depende do ID do documento que mudamos?
+        // Precisamos reiniciar os listeners de requests se o mês mudar.
+        Collab.initCollabUI(); // Reinicia listeners para o novo mês
     }
 }
 
@@ -107,7 +155,7 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// EXPOR FUNÇÕES GLOBAIS (Necessário para onclick no HTML)
+// EXPOR FUNÇÕES GLOBAIS
 window.handleCellClick = (name, dayIndex) => {
     if(state.isAdmin) {
         Admin.handleAdminCellClick(name, dayIndex);
@@ -118,5 +166,4 @@ window.handleCellClick = (name, dayIndex) => {
     }
 };
 
-// [AQUI ESTÁ A CORREÇÃO] Conecta a função ao window
 window.switchSubTab = switchSubTab;
