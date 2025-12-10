@@ -9,7 +9,6 @@ export function initAdminUI() {
     
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
-    
     document.body.style.paddingBottom = "120px";
 
     document.getElementById('tabDaily').classList.remove('hidden');
@@ -17,15 +16,20 @@ export function initAdminUI() {
     document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    const btnSave = document.getElementById('btnSaveCloud');
-    if(btnSave) btnSave.onclick = saveToCloud;
+    // SETUP MODAL DE EDIÇÃO
+    const btnConfirmEdit = document.getElementById('btnAdminConfirm');
+    const btnCancelEdit = document.getElementById('btnAdminCancel');
+    if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
+    if(btnCancelEdit) btnCancelEdit.onclick = closeAdminModal;
 
-    // --- SETUP DO NOVO MODAL ---
-    const btnConfirm = document.getElementById('btnAdminConfirm');
-    const btnCancel = document.getElementById('btnAdminCancel');
-    
-    if(btnConfirm) btnConfirm.onclick = confirmAdminEdit;
-    if(btnCancel) btnCancel.onclick = closeAdminModal;
+    // SETUP MODAL DE SALVAR (NOVO)
+    const btnOpenSave = document.getElementById('btnOpenSaveModal');
+    const btnConfirmSave = document.getElementById('btnSaveConfirm');
+    const btnCancelSave = document.getElementById('btnSaveCancel');
+
+    if(btnOpenSave) btnOpenSave.onclick = openSaveModal;
+    if(btnConfirmSave) btnConfirmSave.onclick = confirmSaveToCloud;
+    if(btnCancelSave) btnCancelSave.onclick = closeSaveModal;
 
     populateEmployeeSelect();
 }
@@ -34,7 +38,6 @@ export function populateEmployeeSelect() {
     const s = document.getElementById('employeeSelect');
     if(!s) return;
     s.innerHTML = '<option value="">Selecione um colaborador...</option>';
-    
     if (!state.scheduleData) return;
 
     const names = Object.keys(state.scheduleData).sort();
@@ -56,9 +59,8 @@ export function populateEmployeeSelect() {
     };
 }
 
-// --- FUNÇÃO CHAMADA AO CLICAR NO DIA (ABRE MODAL) ---
+// --- FUNÇÕES DO MODAL DE EDIÇÃO ---
 export function handleAdminCellClick(name, dayIndex) {
-    // 1. Prepara dados na memória
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
@@ -68,41 +70,31 @@ export function handleAdminCellClick(name, dayIndex) {
 
     const currentStatus = state.rawSchedule[name].calculatedSchedule[dayIndex] || 'F';
 
-    // 2. Preenche o Modal
+    // Preenche e abre modal
     document.getElementById('adminModalSubtext').textContent = `${name} • Dia ${dayIndex + 1}`;
     const input = document.getElementById('adminEditInput');
     input.value = currentStatus;
     
-    // 3. Salva contexto nos inputs hidden
     document.getElementById('adminEditName').value = name;
     document.getElementById('adminEditIndex').value = dayIndex;
 
-    // 4. Mostra o Modal
     document.getElementById('adminEditModal').classList.remove('hidden');
     input.focus();
     input.select();
 }
 
-// --- FUNÇÃO AO CLICAR EM "CONFIRMAR" NO MODAL ---
 function confirmAdminEdit() {
     const name = document.getElementById('adminEditName').value;
     const dayIndex = parseInt(document.getElementById('adminEditIndex').value);
     const newStatus = document.getElementById('adminEditInput').value.toUpperCase().trim();
     
-    if (!newStatus) {
-        alert("Digite um status válido (T, F, etc).");
-        return;
-    }
+    if (!newStatus) { alert("Digite um status."); return; }
 
-    // Atualiza Memória RAW
     state.rawSchedule[name].calculatedSchedule[dayIndex] = newStatus;
-    
-    // Atualiza Visual
     if(state.scheduleData[name] && state.scheduleData[name].schedule) {
         state.scheduleData[name].schedule[dayIndex] = newStatus;
     }
 
-    // Renderiza
     updatePersonalView(name);     
     updateWeekendTable(null);     
     if (state.currentDay === (dayIndex + 1)) renderDailyView();
@@ -115,23 +107,71 @@ function closeAdminModal() {
     document.getElementById('adminEditModal').classList.add('hidden');
 }
 
+// --- FUNÇÕES DO MODAL DE SALVAR (NOVO) ---
+function openSaveModal() {
+    document.getElementById('adminSaveModal').classList.remove('hidden');
+}
+
+function closeSaveModal() {
+    document.getElementById('adminSaveModal').classList.add('hidden');
+}
+
+async function confirmSaveToCloud() {
+    const btnConfirm = document.getElementById('btnSaveConfirm');
+    const originalText = btnConfirm.innerHTML;
+    
+    btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btnConfirm.disabled = true;
+
+    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    
+    try {
+        await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
+        
+        // Sucesso
+        closeSaveModal();
+        alert("Dados salvos com sucesso!"); // Pode substituir por um toast se preferir
+        
+        // Reseta UI da Toolbar
+        const statusLabel = document.getElementById('saveStatus');
+        const btnToolbar = document.getElementById('btnOpenSaveModal');
+        
+        if (statusLabel) {
+            statusLabel.textContent = "Sincronizado";
+            statusLabel.classList.remove('text-orange-400');
+            statusLabel.classList.add('text-gray-300');
+        }
+        if (btnToolbar) {
+            btnToolbar.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
+            btnToolbar.classList.replace('bg-orange-600', 'bg-indigo-600');
+            btnToolbar.classList.replace('hover:bg-orange-500', 'hover:bg-indigo-500');
+        }
+
+    } catch (e) { 
+        console.error("Erro ao salvar:", e);
+        alert("Erro ao salvar: " + e.message);
+    } finally {
+        btnConfirm.innerHTML = originalText;
+        btnConfirm.disabled = false;
+    }
+}
+
 function indicateUnsavedChanges() {
     const saveStatus = document.getElementById('saveStatus');
-    const btnSave = document.getElementById('btnSaveCloud');
+    const btnToolbar = document.getElementById('btnOpenSaveModal');
     
     if (saveStatus) {
         saveStatus.textContent = "Alteração Pendente";
         saveStatus.classList.add('text-orange-400');
         saveStatus.classList.remove('text-gray-300');
     }
-    if (btnSave) {
-        btnSave.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i> Salvar Agora';
-        btnSave.classList.replace('bg-indigo-600', 'bg-orange-600');
-        btnSave.classList.replace('hover:bg-indigo-500', 'hover:bg-orange-500');
+    if (btnToolbar) {
+        btnToolbar.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i> Salvar Agora';
+        btnToolbar.classList.replace('bg-indigo-600', 'bg-orange-600');
+        btnToolbar.classList.replace('hover:bg-indigo-500', 'hover:bg-orange-500');
     }
 }
 
-// --- VISÃO DIÁRIA ---
 export function renderDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     if(dateLabel) {
@@ -140,7 +180,8 @@ export function renderDailyView() {
             dateLabel.textContent = `${daysOfWeek[d.getDay()]}, ${pad(state.currentDay)}/${pad(state.selectedMonthObj.month+1)}`;
         }
     }
-
+    
+    // ... (restante da renderização igual)
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
     let vacationPills = '';
@@ -150,7 +191,6 @@ export function renderDailyView() {
         Object.keys(state.scheduleData).forEach(name => {
             const emp = state.scheduleData[name];
             if (!emp || !emp.schedule) return;
-
             const st = emp.schedule[state.currentDay-1] || 'F';
             
             if(st === 'T') {
@@ -160,14 +200,11 @@ export function renderDailyView() {
                 } else {
                     os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
                 }
-            }
-            else if(st.includes('OFF')) {
+            } else if(st.includes('OFF')) {
                  os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
-            }
-            else if(st === 'FE' || st === 'FÉRIAS') {
+            } else if(st === 'FE' || st === 'FÉRIAS') {
                 v++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
-            }
-            else {
+            } else {
                 o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
             }
         });
@@ -183,38 +220,5 @@ export function renderDailyView() {
         document.getElementById('listOffShift').innerHTML = lists.os;
         document.getElementById('listOff').innerHTML = lists.o;
         document.getElementById('listVacation').innerHTML = vacationPills || '<span class="text-xs text-gray-500 italic w-full text-center py-4">Ninguém.</span>';
-    }
-}
-
-export async function saveToCloud() {
-    const btn = document.getElementById('btnSaveCloud');
-    const statusLabel = document.getElementById('saveStatus');
-    
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
-    btn.disabled = true;
-
-    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    
-    try {
-        await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
-
-        if (statusLabel) {
-            statusLabel.textContent = "Sincronizado";
-            statusLabel.classList.remove('text-orange-400');
-            statusLabel.classList.add('text-gray-300');
-        }
-        
-        btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
-        btn.classList.replace('bg-orange-600', 'bg-indigo-600');
-        btn.classList.replace('hover:bg-orange-500', 'hover:bg-indigo-500');
-        
-        alert("Dados salvos com sucesso!");
-
-    } catch (e) { 
-        console.error("Erro ao salvar:", e);
-        alert("Erro ao salvar: " + e.message);
-        btn.innerHTML = 'Tentar Novamente';
-    } finally {
-        btn.disabled = false;
     }
 }
