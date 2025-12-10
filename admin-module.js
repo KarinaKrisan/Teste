@@ -9,18 +9,93 @@ export function initAdminUI() {
     
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
-    document.body.style.paddingBottom = "100px";
+    document.body.style.paddingBottom = "120px";
 
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.add('hidden'); 
-    
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
     const btnSave = document.getElementById('btnSaveCloud');
     if(btnSave) btnSave.onclick = saveToCloud;
 
+    // INJETA O MENU DE AÇÕES RÁPIDAS NA TOOLBAR
+    injectQuickActions();
+
     populateEmployeeSelect();
+}
+
+function injectQuickActions() {
+    const toolbar = document.querySelector('#adminToolbar > div');
+    if (!toolbar || document.getElementById('quickActionsSelect')) return;
+
+    const div = document.createElement('div');
+    div.className = "flex flex-col ml-4 border-l border-white/10 pl-4";
+    div.innerHTML = `
+        <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Preenchimento Rápido</span>
+        <select id="quickActionsSelect" class="bg-[#0F1020] text-xs text-white border border-gray-700 rounded p-1 outline-none focus:border-purple-500">
+            <option value="">Aplicar Padrão...</option>
+            <option value="5x2">Segunda a Sexta (5x2)</option>
+            <option value="clear">Limpar Tudo (Folgas)</option>
+            <option value="fill">Marcar Tudo (Trabalho)</option>
+        </select>
+    `;
+    
+    // Insere antes dos botões de ação
+    toolbar.insertBefore(div, toolbar.lastElementChild);
+
+    document.getElementById('quickActionsSelect').onchange = (e) => {
+        const val = e.target.value;
+        const empName = document.getElementById('employeeSelect').value;
+        
+        if (!val) return;
+        if (!empName) {
+            alert("Selecione um colaborador na lista acima primeiro.");
+            e.target.value = "";
+            return;
+        }
+
+        if(confirm(`Aplicar padrão "${val}" para ${empName}? Isso substituirá o mês inteiro.`)) {
+            applyPreset(empName, val);
+        }
+        e.target.value = ""; // Reseta select
+    };
+}
+
+// --- LÓGICA DO GERADOR DE ESCALA ---
+function applyPreset(name, type) {
+    if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
+    
+    const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
+    const newSchedule = [];
+
+    for (let d = 1; d <= totalDays; d++) {
+        const date = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, d);
+        const dayOfWeek = date.getDay(); // 0=Dom, 6=Sab
+
+        let status = 'F';
+
+        if (type === '5x2') {
+            // Seg(1) a Sex(5) = T
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) status = 'T';
+        } 
+        else if (type === 'fill') {
+            status = 'T';
+        }
+        // 'clear' já começa como F
+
+        newSchedule.push(status);
+    }
+
+    // Salva na memória
+    state.rawSchedule[name].calculatedSchedule = newSchedule;
+    state.scheduleData[name].schedule = newSchedule;
+
+    // Atualiza visual
+    updatePersonalView(name);
+    updateWeekendTable(null);
+    renderDailyView();
+    indicateUnsavedChanges();
 }
 
 export function populateEmployeeSelect() {
@@ -48,42 +123,28 @@ export function populateEmployeeSelect() {
 }
 
 export function handleAdminCellClick(name, dayIndex) {
-    // Garante que o objeto existe antes de editar
-    if (!state.rawSchedule[name]) {
-        state.rawSchedule[name] = { calculatedSchedule: [] };
-    }
+    if (!state.rawSchedule[name]) state.rawSchedule[name] = { calculatedSchedule: [] };
+    
+    // Garante que o array existe
+    const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     if (!state.rawSchedule[name].calculatedSchedule) {
-        // Se existir o objeto mas não o array, cria baseado no tamanho do mês
-        const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
         state.rawSchedule[name].calculatedSchedule = new Array(totalDays).fill('F');
     }
 
     const currentStatus = state.rawSchedule[name].calculatedSchedule[dayIndex] || 'F';
-
-    const newStatus = prompt(
-        `EDITAR DIA ${dayIndex + 1} - ${name}\nStatus Atual: ${currentStatus}\n\nCódigos: T, F, FE, FD, FS`, 
-        currentStatus
-    );
+    const newStatus = prompt(`Dia ${dayIndex + 1} - Novo Status (T, F, FE, A, etc):`, currentStatus);
 
     if (newStatus === null || newStatus.toUpperCase() === currentStatus) return;
 
-    const formattedStatus = newStatus.toUpperCase();
-
-    // Atualiza Memória Bruta
-    state.rawSchedule[name].calculatedSchedule[dayIndex] = formattedStatus;
-
-    // Atualiza Visual
-    if(state.scheduleData[name]) {
-        state.scheduleData[name].schedule[dayIndex] = formattedStatus;
-    }
+    const formatted = newStatus.toUpperCase();
+    state.rawSchedule[name].calculatedSchedule[dayIndex] = formatted;
     
+    // Atualiza estado processado também
+    if(state.scheduleData[name]) state.scheduleData[name].schedule[dayIndex] = formatted;
+
     updatePersonalView(name);
     updateWeekendTable(null);
-    
-    if (state.currentDay === (dayIndex + 1)) {
-        renderDailyView();
-    }
-
+    if (state.currentDay === (dayIndex + 1)) renderDailyView();
     indicateUnsavedChanges();
 }
 
@@ -113,7 +174,6 @@ export function renderDailyView() {
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
     let vacationPills = '';
-    let totalVacation = 0;
     const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm cursor-default";
 
     Object.keys(state.scheduleData).forEach(name=>{
@@ -132,7 +192,7 @@ export function renderDailyView() {
              os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
         }
         else if(st === 'FE') {
-            totalVacation++;
+            v++;
             vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
         }
         else {
@@ -144,7 +204,7 @@ export function renderDailyView() {
     if(document.getElementById('kpiWorking')) {
         document.getElementById('kpiWorking').textContent=w; 
         document.getElementById('kpiOff').textContent=o;
-        document.getElementById('kpiVacation').textContent=totalVacation; 
+        document.getElementById('kpiVacation').textContent=v; 
         document.getElementById('kpiOffShift').textContent=os;
         
         document.getElementById('listWorking').innerHTML = lists.w;
@@ -161,7 +221,6 @@ export async function saveToCloud() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
     btn.disabled = true;
 
-    // CORREÇÃO AQUI: ID sem prefixo "escala-"
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
     try {
@@ -178,7 +237,6 @@ export async function saveToCloud() {
         btn.classList.replace('hover:bg-orange-500', 'hover:bg-indigo-500');
         
         alert("Salvo com sucesso!");
-
     } catch (e) { 
         console.error("Erro ao salvar:", e);
         alert("Erro ao salvar: " + e.message);
