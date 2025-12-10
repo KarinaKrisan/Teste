@@ -30,8 +30,6 @@ onAuthStateChanged(auth, async (user) => {
         return;
     }
     state.currentUser = user;
-
-    // Garante renderização do seletor
     updateMonthSelectorUI();
 
     try {
@@ -50,18 +48,18 @@ onAuthStateChanged(auth, async (user) => {
                 Collab.initCollabUI(); 
                 switchTab('personal');
             } else {
-                alert("Acesso Negado: Usuário sem perfil encontrado.");
+                alert("Usuário desconhecido.");
             }
         }
     } catch (e) { 
-        console.error("Erro Fatal:", e); 
-        alert("Erro ao carregar o sistema.");
+        console.error("Erro:", e); 
+        alert("Erro crítico no sistema.");
     } finally { 
         hideLoader(); 
     }
 });
 
-// --- LÓGICA DE NAVEGAÇÃO ---
+// --- CARREGAMENTO DE DADOS ---
 async function handleMonthChange(direction) {
     const currentIndex = availableMonths.findIndex(
         m => m.year === state.selectedMonthObj.year && m.month === state.selectedMonthObj.month
@@ -70,7 +68,6 @@ async function handleMonthChange(direction) {
 
     if (newIndex >= 0 && newIndex < availableMonths.length) {
         state.selectedMonthObj = availableMonths[newIndex];
-        
         const overlay = document.getElementById('appLoadingOverlay');
         overlay.classList.remove('hidden', 'opacity-0');
         
@@ -101,23 +98,17 @@ function updateMonthSelectorUI() {
     renderMonthSelector(() => handleMonthChange(-1), () => handleMonthChange(1));
 }
 
-// --- CARREGAMENTO DE DADOS ---
 async function loadData() {
-    // ID no formato YYYY-MM
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando Doc ID:", docId);
+    console.log("Carregando:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
-        
-        if (!snap.exists()) {
-            console.warn(`Mês ${docId} vazio no banco. Iniciando limpo.`);
-        }
+        if (!snap.exists()) console.warn("Mês vazio.");
         processScheduleData();
-        
     } catch (e) { 
-        console.error("Erro loadData:", e); 
+        console.error(e); 
         state.scheduleData = {}; 
     }
 }
@@ -136,20 +127,19 @@ function processScheduleData() {
             const userData = state.rawSchedule[name];
             let finalSchedule = [];
 
-            // 1. Prioridade: Array Pronto (Se já foi salvo pelo novo sistema)
+            // 1. TENTA LER ARRAY (FORMATO NOVO)
             if (userData.calculatedSchedule && Array.isArray(userData.calculatedSchedule)) {
                 finalSchedule = userData.calculatedSchedule;
             } 
             else if (userData.schedule && Array.isArray(userData.schedule)) {
                 finalSchedule = userData.schedule;
             }
-            // 2. Fallback: Lê regras de texto (Ex: "segunda a sexta")
+            // 2. SE NÃO TIVER, TRADUZ O TEXTO (FORMATO ANTIGO)
             else {
-                console.log(`Traduzindo regras para: ${name}`);
                 finalSchedule = generateScheduleFromRules(userData, year, month, totalDays);
             }
 
-            // Segurança: Garante tamanho do array
+            // Completa o array se necessário
             if (finalSchedule.length < totalDays) {
                 const diff = totalDays - finalSchedule.length;
                 for(let i=0; i<diff; i++) finalSchedule.push('F');
@@ -163,10 +153,9 @@ function processScheduleData() {
     }
 }
 
-// --- TRADUTOR DE REGRAS (ESSENCIAL PARA DADOS ANTIGOS) ---
+// --- TRADUTOR DE REGRAS (IMPORTANTE) ---
 function generateScheduleFromRules(data, year, month, totalDays) {
     const arr = [];
-    // Lê os campos T e F, tratando nulos
     const ruleT = (data.T && typeof data.T === 'string') ? data.T.toLowerCase() : "";
     const ruleF = (data.F && typeof data.F === 'string') ? data.F.toLowerCase() : "";
 
@@ -174,14 +163,14 @@ function generateScheduleFromRules(data, year, month, totalDays) {
         const date = new Date(year, month, d);
         const dayOfWeek = date.getDay(); // 0=Dom, 6=Sab
 
-        let status = 'F'; // Padrão é Folga
+        let status = 'F'; 
 
-        // Se a regra diz "segunda a sexta", marca T
+        // Regra de Trabalho
         if (ruleT.includes("segunda a sexta") || ruleT.includes("segunda à sexta")) {
             if (dayOfWeek >= 1 && dayOfWeek <= 5) status = 'T';
         }
 
-        // Se a regra diz "fins de semana", força F (apenas para garantir)
+        // Regra de Folga
         if (ruleF.includes("fins de semana") || ruleF.includes("fim de semana")) {
             if (dayOfWeek === 0 || dayOfWeek === 6) status = 'F';
         }
@@ -191,7 +180,7 @@ function generateScheduleFromRules(data, year, month, totalDays) {
     return arr;
 }
 
-// --- UTILS UI ---
+// UTILS
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
