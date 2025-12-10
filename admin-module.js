@@ -16,13 +16,12 @@ export function initAdminUI() {
     document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // SETUP MODAL DE EDIÇÃO
+    // SETUP MODAIS
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
     if(btnCancelEdit) btnCancelEdit.onclick = closeAdminModal;
 
-    // SETUP MODAL DE SALVAR
     const btnOpenSave = document.getElementById('btnOpenSaveModal');
     const btnConfirmSave = document.getElementById('btnSaveConfirm');
     const btnCancelSave = document.getElementById('btnSaveCancel');
@@ -90,7 +89,6 @@ function confirmAdminEdit() {
     if (!newStatus) { alert("Digite um status."); return; }
 
     state.rawSchedule[name].calculatedSchedule[dayIndex] = newStatus;
-    
     if(state.scheduleData[name] && state.scheduleData[name].schedule) {
         state.scheduleData[name].schedule[dayIndex] = newStatus;
     }
@@ -107,7 +105,7 @@ function closeAdminModal() {
     document.getElementById('adminEditModal').classList.add('hidden');
 }
 
-// --- FUNÇÕES DO MODAL DE SALVAR ---
+// --- FUNÇÕES DE SALVAMENTO ---
 function openSaveModal() {
     document.getElementById('adminSaveModal').classList.remove('hidden');
 }
@@ -116,7 +114,16 @@ function closeSaveModal() {
     document.getElementById('adminSaveModal').classList.add('hidden');
 }
 
-// --- AQUI ESTÁ A LÓGICA DE SALVAMENTO CORRETA ---
+// FUNÇÃO AUXILIAR PARA O MODAL DE SUCESSO
+function openSuccessModal(msg) {
+    const modal = document.getElementById('successModal');
+    const msgEl = document.getElementById('successMessage');
+    if(modal && msgEl) {
+        msgEl.textContent = msg;
+        modal.classList.remove('hidden');
+    }
+}
+
 async function confirmSaveToCloud() {
     const btnConfirm = document.getElementById('btnSaveConfirm');
     const originalText = btnConfirm.innerHTML;
@@ -124,18 +131,15 @@ async function confirmSaveToCloud() {
     btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
     btnConfirm.disabled = true;
 
-    // LÓGICA DE NOMECLATURA: YYYY-MM (Ex: 2025-12)
-    // Se month for 11 (Dezembro), month+1 vira 12. padStart garante o zero se for menor que 10.
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    console.log("Salvando na coleção 'escalas', documento:", docId);
-
     try {
-        // Salva exatamente em: escalas > 2025-12
         await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
         
         closeSaveModal();
-        alert("Dados salvos com sucesso em " + docId); 
+        
+        // CHAMA O NOVO MODAL DE SUCESSO AQUI
+        openSuccessModal(`Dados salvos com sucesso em ${docId}`);
         
         const statusLabel = document.getElementById('saveStatus');
         const btnToolbar = document.getElementById('btnOpenSaveModal');
@@ -152,8 +156,8 @@ async function confirmSaveToCloud() {
         }
 
     } catch (e) { 
-        console.error("Erro crítico ao salvar:", e);
-        alert("ERRO AO SALVAR: " + e.message);
+        console.error("Erro ao salvar:", e);
+        alert("Erro: " + e.message); // Mantém alert para erro crítico
     } finally {
         btnConfirm.innerHTML = originalText;
         btnConfirm.disabled = false;
@@ -185,7 +189,7 @@ export function renderDailyView() {
             dateLabel.textContent = `${daysOfWeek[d.getDay()]}, ${pad(state.currentDay)}/${pad(state.selectedMonthObj.month+1)}`;
         }
     }
-    
+    // ... restante da lógica de renderização
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
     let vacationPills = '';
