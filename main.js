@@ -15,7 +15,7 @@ if(btnLogout) {
     });
 }
 
-// Slider de data (Visão Diária)
+// Slider de data
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
     state.currentDay = parseInt(e.target.value); 
@@ -32,11 +32,11 @@ onAuthStateChanged(auth, async (user) => {
     }
     state.currentUser = user;
 
-    // Renderiza o seletor de mês
+    // Renderiza o seletor de mês inicial
     updateMonthSelectorUI();
 
     try {
-        // Tenta Admin
+        // Tenta carregar perfil de Admin
         const adminSnap = await getDoc(doc(db, "administradores", user.uid));
         if (adminSnap.exists()) {
             state.isAdmin = true;
@@ -44,7 +44,7 @@ onAuthStateChanged(auth, async (user) => {
             Admin.initAdminUI(); 
             switchTab('daily');
         } else {
-            // Tenta Colab
+            // Tenta carregar perfil de Colaborador
             const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
             if (collabSnap.exists()) {
                 state.isAdmin = false;
@@ -53,14 +53,14 @@ onAuthStateChanged(auth, async (user) => {
                 Collab.initCollabUI(); 
                 switchTab('personal');
             } else {
-                alert("Usuário sem perfil!");
+                alert("Acesso Negado: Usuário sem perfil de colaborador ou admin.");
             }
         }
     } catch (e) { 
         console.error("Erro crítico na inicialização:", e); 
-        alert("Erro ao carregar sistema. Verifique o console.");
+        alert("Ocorreu um erro ao carregar os dados. Verifique o console (F12) para detalhes.");
     } finally { 
-        // Força o loader a sumir mesmo se houver erros de dados
+        // Remove a tela de carregamento em QUALQUER situação
         hideLoader(); 
     }
 });
@@ -76,12 +76,14 @@ async function handleMonthChange(direction) {
     if (newIndex >= 0 && newIndex < availableMonths.length) {
         state.selectedMonthObj = availableMonths[newIndex];
         
+        // Mostra loader
         const overlay = document.getElementById('appLoadingOverlay');
         overlay.classList.remove('hidden', 'opacity-0');
         
         updateMonthSelectorUI();
         await loadData();
 
+        // Atualiza UI
         if (state.isAdmin) {
             Admin.renderDailyView();
             const selectedEmp = document.getElementById('employeeSelect').value;
@@ -95,6 +97,7 @@ async function handleMonthChange(direction) {
             Collab.initCollabUI(); 
         }
 
+        // Esconde loader
         setTimeout(() => {
             overlay.classList.add('opacity-0');
             setTimeout(() => overlay.classList.add('hidden'), 500);
@@ -111,33 +114,31 @@ function updateMonthSelectorUI() {
 
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
-    // ID baseado no nome do documento no Firestore (ex: 2025-12)
+    // Define o ID do documento (ex: 2025-12)
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando mês:", docId);
+    console.log("Carregando escala do mês:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
         
         if (!snap.exists()) {
-            console.warn("Nenhum dado encontrado para", docId);
+            console.warn(`Escala ${docId} não encontrada no banco. Iniciando vazio.`);
             state.scheduleData = {};
         } else {
             processScheduleData();
         }
         
     } catch (e) { 
-        console.error("Erro loadData:", e); 
-        state.scheduleData = {};
+        console.error("Erro em loadData:", e); 
+        state.scheduleData = {}; // Evita quebrar a UI
     }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
-    // Pega o número de dias do mês selecionado
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
-    // Configura o slider
     const slider = document.getElementById('dateSlider');
     if (slider) { 
         slider.max = totalDays; 
@@ -149,16 +150,16 @@ function processScheduleData() {
         Object.keys(state.rawSchedule).forEach(name => {
             const userData = state.rawSchedule[name];
             
-            // --- CORREÇÃO DO TRAVAMENTO ---
-            // Verifica se o array existe. Se não existir (como no seu print do banco), cria um array de 'F' (Folga)
+            // --- PROTEÇÃO CONTRA FORMATO INCORRETO DO BANCO ---
+            // Tenta pegar o array de dias. Se não existir (porque o banco tem formato antigo), cria um array vazio.
             let rawS = userData.calculatedSchedule || userData.schedule;
             
             if (!Array.isArray(rawS)) {
-                 console.warn(`Aviso: ${name} não tem array de escala válido. Gerando array padrão.`);
+                 console.warn(`Corrigindo dados para: ${name}. Criando escala padrão vazia.`);
                  rawS = new Array(totalDays).fill('F');
             }
             
-            // Se o array for menor que o mês (ex: salvou em fev e abriu mar), completa
+            // Se o array existir mas for curto, completa com 'F'
             if (rawS.length < totalDays) {
                 const diff = totalDays - rawS.length;
                 for(let i=0; i<diff; i++) rawS.push('F');
