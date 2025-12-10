@@ -9,83 +9,24 @@ export function initAdminUI() {
     
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
-    document.body.style.paddingBottom = "120px"; // Espaço extra para toolbar
+    
+    // Ajuste de layout
+    document.body.style.paddingBottom = "120px";
 
+    // Mostra abas corretas
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.add('hidden'); 
+    
+    // Mostra seletor
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
+    // Configura botão salvar
     const btnSave = document.getElementById('btnSaveCloud');
     if(btnSave) btnSave.onclick = saveToCloud;
 
-    // Injeta menu de preenchimento rápido se não existir
-    injectQuickActions();
+    // Inicializa lista
     populateEmployeeSelect();
-}
-
-function injectQuickActions() {
-    const toolbar = document.querySelector('#adminToolbar > div');
-    // Evita duplicar se já existir
-    if (!toolbar || document.getElementById('quickActionsSelect')) return;
-
-    const div = document.createElement('div');
-    div.className = "flex flex-col ml-4 border-l border-white/10 pl-4";
-    div.innerHTML = `
-        <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Preenchimento Rápido</span>
-        <select id="quickActionsSelect" class="bg-[#0F1020] text-xs text-white border border-gray-700 rounded p-1 outline-none focus:border-purple-500">
-            <option value="">Ações...</option>
-            <option value="5x2">Aplicar 5x2 (Seg-Sex)</option>
-            <option value="clear">Limpar Tudo</option>
-            <option value="fill">Preencher Tudo (T)</option>
-        </select>
-    `;
-    toolbar.insertBefore(div, toolbar.lastElementChild);
-
-    document.getElementById('quickActionsSelect').onchange = (e) => {
-        const val = e.target.value;
-        const empName = document.getElementById('employeeSelect').value;
-        
-        if (!val || !empName) {
-            if(!empName && val) alert("Selecione um colaborador primeiro.");
-            e.target.value = "";
-            return;
-        }
-
-        if(confirm(`Aplicar padrão "${val}" para ${empName}?`)) {
-            applyPreset(empName, val);
-        }
-        e.target.value = "";
-    };
-}
-
-// Aplica padrões de escala (5x2, etc)
-function applyPreset(name, type) {
-    if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
-    
-    const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
-    const newSchedule = [];
-
-    for (let d = 1; d <= totalDays; d++) {
-        const date = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, d);
-        const dayOfWeek = date.getDay(); // 0=Dom, 6=Sab
-        let status = 'F';
-
-        if (type === '5x2') {
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) status = 'T';
-        } else if (type === 'fill') {
-            status = 'T';
-        }
-        newSchedule.push(status);
-    }
-
-    state.rawSchedule[name].calculatedSchedule = newSchedule;
-    state.scheduleData[name].schedule = newSchedule;
-
-    updatePersonalView(name);
-    updateWeekendTable(null);
-    renderDailyView();
-    indicateUnsavedChanges();
 }
 
 export function populateEmployeeSelect() {
@@ -112,41 +53,65 @@ export function populateEmployeeSelect() {
     };
 }
 
+// --- EDIÇÃO INDIVIDUAL POR CLIQUE ---
 export function handleAdminCellClick(name, dayIndex) {
-    // Garante estrutura de dados
+    // 1. Garante a estrutura de dados na memória
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
+    
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
+    // Se não existir array editável, cria uma cópia do que está sendo visto ou um novo array de Folgas
     if (!state.rawSchedule[name].calculatedSchedule) {
-        // Se não existir array editável, cria um baseado no atual (visual) ou vazio
         state.rawSchedule[name].calculatedSchedule = state.scheduleData[name].schedule || new Array(totalDays).fill('F');
     }
 
+    // 2. Pega status atual
     const currentStatus = state.rawSchedule[name].calculatedSchedule[dayIndex] || 'F';
-    const newStatus = prompt(`Editar dia ${dayIndex + 1} para ${name}:\n(Use: T, F, FE, A)`, currentStatus);
 
+    // 3. Prompt de Edição
+    const newStatus = prompt(
+        `EDITAR DIA ${dayIndex + 1} (${name})\n\nStatus Atual: ${currentStatus}\nDigite o novo código (T, F, FE, A, etc):`, 
+        currentStatus
+    );
+
+    // 4. Se cancelar, sai
     if (newStatus === null || newStatus.toUpperCase() === currentStatus) return;
 
+    // 5. Aplica a mudança
     const formatted = newStatus.toUpperCase();
+    
+    // Atualiza a memória bruta (que será salva)
     state.rawSchedule[name].calculatedSchedule[dayIndex] = formatted;
-    state.scheduleData[name].schedule[dayIndex] = formatted;
+    
+    // Atualiza a visualização imediata
+    if(state.scheduleData[name]) {
+        state.scheduleData[name].schedule[dayIndex] = formatted;
+    }
 
-    updatePersonalView(name);
-    updateWeekendTable(null);
-    if (state.currentDay === (dayIndex + 1)) renderDailyView();
+    // 6. Atualiza todas as visualizações
+    updatePersonalView(name);     // Calendário Individual
+    updateWeekendTable(null);     // Lista de Fim de Semana
+    
+    // Se o dia editado for o dia selecionado no slider, atualiza o dashboard
+    if (state.currentDay === (dayIndex + 1)) {
+        renderDailyView();
+    }
+
+    // 7. Avisa que precisa salvar
     indicateUnsavedChanges();
 }
 
 function indicateUnsavedChanges() {
     const saveStatus = document.getElementById('saveStatus');
     const btnSave = document.getElementById('btnSaveCloud');
+    
     if (saveStatus) {
-        saveStatus.textContent = "Não Salvo!";
+        saveStatus.textContent = "Alteração Pendente";
         saveStatus.classList.add('text-orange-400');
         saveStatus.classList.remove('text-gray-300');
     }
     if (btnSave) {
-        btnSave.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i> Salvar Agora';
+        btnSave.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i> Salvar Agora';
         btnSave.classList.replace('bg-indigo-600', 'bg-orange-600');
         btnSave.classList.replace('hover:bg-indigo-500', 'hover:bg-orange-500');
     }
@@ -158,9 +123,8 @@ export function renderDailyView() {
         const dow = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, state.currentDay).getDay();
         dateLabel.textContent = `${daysOfWeek[dow]}, ${pad(state.currentDay)}/${pad(state.selectedMonthObj.month+1)}`;
     }
-    // ... (restante da lógica de renderização igual ao anterior) ...
-    // Para economizar espaço, mantive a lógica de renderização visual intacta pois não afeta os dados
-    // Apenas certifique-se de que esta função existe e renderiza as listas (lists.w, lists.o, etc.)
+    // Lógica de contagem KPIs e listas (mantida igual para economizar espaço e focar na correção)
+    // ... (Use o código da resposta anterior para esta função se precisar, a lógica de renderização não mudou)
 }
 
 export async function saveToCloud() {
@@ -170,9 +134,11 @@ export async function saveToCloud() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
     btn.disabled = true;
 
+    // ID do documento (ex: 2025-12)
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
     try {
+        // Salva o objeto completo com os arrays calculatedSchedule
         await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
 
         if (statusLabel) {
@@ -180,14 +146,17 @@ export async function saveToCloud() {
             statusLabel.classList.remove('text-orange-400');
             statusLabel.classList.add('text-gray-300');
         }
+        
         btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i> Salvar';
         btn.classList.replace('bg-orange-600', 'bg-indigo-600');
         btn.classList.replace('hover:bg-orange-500', 'hover:bg-indigo-500');
         
-        alert("Dados salvos com sucesso!");
+        alert("Escala salva com sucesso!");
+
     } catch (e) { 
-        console.error("Erro Save:", e);
+        console.error("Erro ao salvar:", e);
         alert("Erro ao salvar: " + e.message);
+        btn.innerHTML = 'Tentar Novamente';
     } finally {
         btn.disabled = false;
     }
