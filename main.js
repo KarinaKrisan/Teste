@@ -15,7 +15,6 @@ if(btnLogout) {
     });
 }
 
-// Slider de data
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
     state.currentDay = parseInt(e.target.value); 
@@ -31,8 +30,6 @@ onAuthStateChanged(auth, async (user) => {
         return;
     }
     state.currentUser = user;
-
-    // Renderiza o seletor de mês inicial
     updateMonthSelectorUI();
 
     try {
@@ -51,28 +48,26 @@ onAuthStateChanged(auth, async (user) => {
                 Collab.initCollabUI(); 
                 switchTab('personal');
             } else {
-                alert("Acesso Negado: Usuário sem perfil.");
+                alert("Acesso Negado.");
             }
         }
     } catch (e) { 
-        console.error("Erro crítico:", e); 
-        alert("Erro ao carregar sistema. Verifique o console.");
+        console.error(e); 
+        alert("Erro no sistema.");
     } finally { 
         hideLoader(); 
     }
 });
 
-// --- LÓGICA DE TROCA DE MÊS ---
+// --- CARREGAMENTO DE DADOS ---
 async function handleMonthChange(direction) {
     const currentIndex = availableMonths.findIndex(
         m => m.year === state.selectedMonthObj.year && m.month === state.selectedMonthObj.month
     );
-
     const newIndex = currentIndex + direction;
 
     if (newIndex >= 0 && newIndex < availableMonths.length) {
         state.selectedMonthObj = availableMonths[newIndex];
-        
         const overlay = document.getElementById('appLoadingOverlay');
         overlay.classList.remove('hidden', 'opacity-0');
         
@@ -100,68 +95,47 @@ async function handleMonthChange(direction) {
 }
 
 function updateMonthSelectorUI() {
-    renderMonthSelector(
-        () => handleMonthChange(-1), 
-        () => handleMonthChange(1)
-    );
+    renderMonthSelector(() => handleMonthChange(-1), () => handleMonthChange(1));
 }
 
-// --- CARREGAMENTO DE DADOS ---
 async function loadData() {
-    // ID baseado no formato do seu banco: YYYY-MM (ex: 2025-11)
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Lendo documento:", docId);
+    console.log("Carregando:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
-        
-        if (!snap.exists()) {
-            console.warn(`Documento ${docId} não encontrado.`);
-            state.scheduleData = {};
-        } else {
-            processScheduleData();
-        }
-        
+        processScheduleData();
     } catch (e) { 
-        console.error("Erro no loadData:", e); 
+        console.error(e); 
         state.scheduleData = {}; 
     }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
-    const year = state.selectedMonthObj.year;
-    const month = state.selectedMonthObj.month; // 0-11
-    const totalDays = new Date(year, month+1, 0).getDate();
+    const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
-    // Configura o slider
     const slider = document.getElementById('dateSlider');
-    if (slider) { 
-        slider.max = totalDays; 
-        if (state.currentDay > totalDays) state.currentDay = totalDays;
-        slider.value = state.currentDay; 
-    }
+    if (slider) { slider.max = totalDays; slider.value = state.currentDay; }
 
     if(state.rawSchedule) {
+        // Itera sobre todas as chaves (nomes) encontradas no documento
         Object.keys(state.rawSchedule).forEach(name => {
             const userData = state.rawSchedule[name];
             let finalSchedule = [];
 
-            // 1. TENTA LER A LISTA PRONTA (Se já foi salvo pelo Admin novo)
+            // Se já tem array salvo, usa. Se não, cria vazio.
             if (userData.calculatedSchedule && Array.isArray(userData.calculatedSchedule)) {
                 finalSchedule = userData.calculatedSchedule;
-            } 
-            else if (userData.schedule && Array.isArray(userData.schedule)) {
+            } else if (userData.schedule && Array.isArray(userData.schedule)) {
                 finalSchedule = userData.schedule;
-            }
-            // 2. SE NÃO TIVER LISTA, TENTA "TRADUZIR" AS REGRAS DO BANCO (2025-11)
-            else {
-                console.log(`Gerando escala baseada em regras para: ${name}`);
-                finalSchedule = generateScheduleFromRules(userData, year, month, totalDays);
+            } else {
+                // FALLBACK SEGURO: Preenche com 'F' se não houver dados claros
+                finalSchedule = new Array(totalDays).fill('F');
             }
 
-            // Garante que o array tenha o tamanho certo
+            // Completa dias faltantes se necessário
             if (finalSchedule.length < totalDays) {
                 const diff = totalDays - finalSchedule.length;
                 for(let i=0; i<diff; i++) finalSchedule.push('F');
@@ -175,44 +149,12 @@ function processScheduleData() {
     }
 }
 
-// --- FUNÇÃO DE TRADUÇÃO DE REGRAS (NOVA) ---
-function generateScheduleFromRules(data, year, month, totalDays) {
-    const arr = [];
-    // Normaliza os textos do banco para minúsculas para facilitar a comparação
-    const ruleT = data.T ? data.T.toLowerCase() : "";
-    const ruleF = data.F ? data.F.toLowerCase() : "";
-
-    for (let d = 1; d <= totalDays; d++) {
-        const date = new Date(year, month, d);
-        const dayOfWeek = date.getDay(); // 0 = Domingo, 6 = Sábado
-
-        let status = 'F'; // Status padrão
-
-        // Lógica para "Segunda a Sexta"
-        if (ruleT.includes("segunda a sexta") || ruleT.includes("segunda à sexta")) {
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) status = 'T';
-        }
-
-        // Lógica para "Fins de Semana" (sobrescreve se necessário)
-        if (ruleF.includes("fins de semana") || ruleF.includes("fim de semana")) {
-            if (dayOfWeek === 0 || dayOfWeek === 6) status = 'F';
-        }
-        
-        // Se no banco 2025-12 as chaves existirem mas estiverem vazias, assume F padrão
-        // Se houver lógica específica para T ou F que não seja texto, adicione aqui.
-
-        arr.push(status);
-    }
-    return arr;
-}
-
-// --- UTILS ---
+// UTILS
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
     const btn = document.querySelector(`[data-tab="${tabName}"]`);
     if(btn) btn.classList.add('active');
-    
     const view = document.getElementById(`${tabName}View`);
     if(view) view.classList.remove('hidden');
 }
@@ -233,5 +175,4 @@ window.handleCellClick = (name, dayIndex) => {
         });
     }
 };
-
 window.switchSubTab = switchSubTab;
