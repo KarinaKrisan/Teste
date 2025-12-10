@@ -32,7 +32,7 @@ onAuthStateChanged(auth, async (user) => {
     }
     state.currentUser = user;
 
-    // Renderiza o seletor de mês pela primeira vez
+    // Renderiza o seletor de mês
     updateMonthSelectorUI();
 
     try {
@@ -57,9 +57,10 @@ onAuthStateChanged(auth, async (user) => {
             }
         }
     } catch (e) { 
-        console.error(e); 
+        console.error("Erro crítico na inicialização:", e); 
         alert("Erro ao carregar sistema. Verifique o console.");
     } finally { 
+        // Força o loader a sumir mesmo se houver erros de dados
         hideLoader(); 
     }
 });
@@ -72,39 +73,28 @@ async function handleMonthChange(direction) {
 
     const newIndex = currentIndex + direction;
 
-    // Verifica se existe mês anterior ou próximo
     if (newIndex >= 0 && newIndex < availableMonths.length) {
-        // 1. Atualiza Estado
         state.selectedMonthObj = availableMonths[newIndex];
         
-        // 2. Feedback Visual
         const overlay = document.getElementById('appLoadingOverlay');
         overlay.classList.remove('hidden', 'opacity-0');
         
-        // 3. Atualiza Seletor
         updateMonthSelectorUI();
-
-        // 4. Carrega Novos Dados
         await loadData();
 
-        // 5. Atualiza Interface Específica
         if (state.isAdmin) {
             Admin.renderDailyView();
-            // Se tiver alguém selecionado no select, atualiza a visão dele
             const selectedEmp = document.getElementById('employeeSelect').value;
             if (selectedEmp) {
                 updatePersonalView(selectedEmp);
                 updateWeekendTable(null);
             }
         } else {
-            // Colaborador
             updatePersonalView(state.profile.name);
             updateWeekendTable(null);
-            // Se a aba de trocas estiver ativa, recarrega
             Collab.initCollabUI(); 
         }
 
-        // Esconde loading
         setTimeout(() => {
             overlay.classList.add('opacity-0');
             setTimeout(() => overlay.classList.add('hidden'), 500);
@@ -114,21 +104,21 @@ async function handleMonthChange(direction) {
 
 function updateMonthSelectorUI() {
     renderMonthSelector(
-        () => handleMonthChange(-1), // Prev
-        () => handleMonthChange(1)   // Next
+        () => handleMonthChange(-1), 
+        () => handleMonthChange(1)
     );
 }
 
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
-    const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    // ID baseado no nome do documento no Firestore (ex: 2025-12)
+    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     console.log("Carregando mês:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
         
-        // Se o mês não existe no banco, limpa os dados da memória
         if (!snap.exists()) {
             console.warn("Nenhum dado encontrado para", docId);
             state.scheduleData = {};
@@ -144,20 +134,40 @@ async function loadData() {
 
 function processScheduleData() {
     state.scheduleData = {};
+    // Pega o número de dias do mês selecionado
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
-    // Atualiza slider da Home para o limite do novo mês
+    // Configura o slider
     const slider = document.getElementById('dateSlider');
     if (slider) { 
         slider.max = totalDays; 
-        if (state.currentDay > totalDays) state.currentDay = totalDays; // Corrige se o dia selecionado for 31 e o mês tiver 30
+        if (state.currentDay > totalDays) state.currentDay = totalDays;
         slider.value = state.currentDay; 
     }
 
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(name => {
-            let s = state.rawSchedule[name].calculatedSchedule || new Array(totalDays).fill('F');
-            state.scheduleData[name] = { info: state.rawSchedule[name], schedule: s };
+            const userData = state.rawSchedule[name];
+            
+            // --- CORREÇÃO DO TRAVAMENTO ---
+            // Verifica se o array existe. Se não existir (como no seu print do banco), cria um array de 'F' (Folga)
+            let rawS = userData.calculatedSchedule || userData.schedule;
+            
+            if (!Array.isArray(rawS)) {
+                 console.warn(`Aviso: ${name} não tem array de escala válido. Gerando array padrão.`);
+                 rawS = new Array(totalDays).fill('F');
+            }
+            
+            // Se o array for menor que o mês (ex: salvou em fev e abriu mar), completa
+            if (rawS.length < totalDays) {
+                const diff = totalDays - rawS.length;
+                for(let i=0; i<diff; i++) rawS.push('F');
+            }
+
+            state.scheduleData[name] = { 
+                info: userData, 
+                schedule: rawS 
+            };
         });
     }
 }
@@ -180,7 +190,6 @@ document.querySelectorAll('.tab-button').forEach(b => {
     });
 });
 
-// EXPOR FUNÇÕES GLOBAIS
 window.handleCellClick = (name, dayIndex) => {
     if(state.isAdmin) {
         Admin.handleAdminCellClick(name, dayIndex);
