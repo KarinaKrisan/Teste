@@ -7,25 +7,26 @@ export function initAdminUI() {
     const toolbar = document.getElementById('adminToolbar');
     const hint = document.getElementById('adminEditHint');
     
-    // Garante que a interface apareça
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
     
     document.body.style.paddingBottom = "120px";
 
-    // Mostra as abas corretas para Admin
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.add('hidden'); 
-    
-    // Mostra o seletor de funcionário
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // Ativa o botão Salvar
     const btnSave = document.getElementById('btnSaveCloud');
     if(btnSave) btnSave.onclick = saveToCloud;
 
-    // Carrega a lista de funcionários
+    // --- SETUP DO NOVO MODAL ---
+    const btnConfirm = document.getElementById('btnAdminConfirm');
+    const btnCancel = document.getElementById('btnAdminCancel');
+    
+    if(btnConfirm) btnConfirm.onclick = confirmAdminEdit;
+    if(btnCancel) btnCancel.onclick = closeAdminModal;
+
     populateEmployeeSelect();
 }
 
@@ -34,7 +35,6 @@ export function populateEmployeeSelect() {
     if(!s) return;
     s.innerHTML = '<option value="">Selecione um colaborador...</option>';
     
-    // Proteção: Só tenta listar se houver dados carregados
     if (!state.scheduleData) return;
 
     const names = Object.keys(state.scheduleData).sort();
@@ -56,50 +56,63 @@ export function populateEmployeeSelect() {
     };
 }
 
-// --- EDIÇÃO POR CLIQUE (Conforme solicitado) ---
+// --- FUNÇÃO CHAMADA AO CLICAR NO DIA (ABRE MODAL) ---
 export function handleAdminCellClick(name, dayIndex) {
-    // 1. Cria a estrutura na memória se não existir
+    // 1. Prepara dados na memória
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
-    
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
     
-    // Se não tiver um array de escala salvo, cria um novo
     if (!state.rawSchedule[name].calculatedSchedule) {
         state.rawSchedule[name].calculatedSchedule = state.scheduleData[name]?.schedule || new Array(totalDays).fill('F');
     }
 
-    // 2. Pega o status atual do dia clicado
     const currentStatus = state.rawSchedule[name].calculatedSchedule[dayIndex] || 'F';
 
-    // 3. Pergunta o novo status
-    const newStatus = prompt(
-        `EDITAR DIA ${dayIndex + 1} (${name})\n\nStatus Atual: ${currentStatus}\nDigite o novo código (T, F, FE, A):`, 
-        currentStatus
-    );
-
-    // Se cancelar ou deixar igual, não faz nada
-    if (newStatus === null || newStatus.toUpperCase() === currentStatus) return;
-
-    const formatted = newStatus.toUpperCase();
+    // 2. Preenche o Modal
+    document.getElementById('adminModalSubtext').textContent = `${name} • Dia ${dayIndex + 1}`;
+    const input = document.getElementById('adminEditInput');
+    input.value = currentStatus;
     
-    // 4. Atualiza Memória Bruta (Para salvar no banco)
-    state.rawSchedule[name].calculatedSchedule[dayIndex] = formatted;
+    // 3. Salva contexto nos inputs hidden
+    document.getElementById('adminEditName').value = name;
+    document.getElementById('adminEditIndex').value = dayIndex;
+
+    // 4. Mostra o Modal
+    document.getElementById('adminEditModal').classList.remove('hidden');
+    input.focus();
+    input.select();
+}
+
+// --- FUNÇÃO AO CLICAR EM "CONFIRMAR" NO MODAL ---
+function confirmAdminEdit() {
+    const name = document.getElementById('adminEditName').value;
+    const dayIndex = parseInt(document.getElementById('adminEditIndex').value);
+    const newStatus = document.getElementById('adminEditInput').value.toUpperCase().trim();
     
-    // 5. Atualiza Memória Visual (Para ver a cor mudar na hora)
-    if(state.scheduleData[name] && state.scheduleData[name].schedule) {
-        state.scheduleData[name].schedule[dayIndex] = formatted;
+    if (!newStatus) {
+        alert("Digite um status válido (T, F, etc).");
+        return;
     }
 
-    // 6. Atualiza Telas
+    // Atualiza Memória RAW
+    state.rawSchedule[name].calculatedSchedule[dayIndex] = newStatus;
+    
+    // Atualiza Visual
+    if(state.scheduleData[name] && state.scheduleData[name].schedule) {
+        state.scheduleData[name].schedule[dayIndex] = newStatus;
+    }
+
+    // Renderiza
     updatePersonalView(name);     
     updateWeekendTable(null);     
-    
-    if (state.currentDay === (dayIndex + 1)) {
-        renderDailyView();
-    }
+    if (state.currentDay === (dayIndex + 1)) renderDailyView();
 
-    // 7. Avisa que precisa salvar
     indicateUnsavedChanges();
+    closeAdminModal();
+}
+
+function closeAdminModal() {
+    document.getElementById('adminEditModal').classList.add('hidden');
 }
 
 function indicateUnsavedChanges() {
@@ -118,9 +131,8 @@ function indicateUnsavedChanges() {
     }
 }
 
-// --- VISÃO DIÁRIA (CORRIGIDA E BLINDADA) ---
+// --- VISÃO DIÁRIA ---
 export function renderDailyView() {
-    // 1. Atualiza Data no Topo
     const dateLabel = document.getElementById('currentDateLabel');
     if(dateLabel) {
         const d = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, state.currentDay);
@@ -134,46 +146,33 @@ export function renderDailyView() {
     let vacationPills = '';
     const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm cursor-default";
 
-    // 2. Loop Seguro pelos Colaboradores
     if (state.scheduleData) {
         Object.keys(state.scheduleData).forEach(name => {
             const emp = state.scheduleData[name];
-            
-            // SEGURANÇA: Se o funcionário não tiver escala gerada, pula para evitar erro
             if (!emp || !emp.schedule) return;
 
             const st = emp.schedule[state.currentDay-1] || 'F';
             
-            // Lógica de Contagem
             if(st === 'T') {
-                // Tenta pegar horário. Se não existir, assume vazio.
-                // IMPORTANTE: Se não tiver horário no banco, considera que está trabalhando (T).
                 const hours = (emp.info && (emp.info.Horário || emp.info.Horario)) || '';
-                
                 if (isWorkingTime(hours)) {
-                    w++; 
-                    lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
+                    w++; lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
                 } else {
-                    os++; 
-                    lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+                    os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
                 }
             }
             else if(st.includes('OFF')) {
-                 os++; 
-                 lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+                 os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
             }
             else if(st === 'FE' || st === 'FÉRIAS') {
-                v++;
-                vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
+                v++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
             }
             else {
-                o++;
-                lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
+                o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
             }
         });
     }
 
-    // 3. Atualiza os contadores na tela (se existirem)
     if(document.getElementById('kpiWorking')) {
         document.getElementById('kpiWorking').textContent = w; 
         document.getElementById('kpiOff').textContent = o;
@@ -194,7 +193,6 @@ export async function saveToCloud() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Salvando...';
     btn.disabled = true;
 
-    // Garante que salve no mês correto
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
     try {
@@ -210,7 +208,7 @@ export async function saveToCloud() {
         btn.classList.replace('bg-orange-600', 'bg-indigo-600');
         btn.classList.replace('hover:bg-orange-500', 'hover:bg-indigo-500');
         
-        alert("Escala salva com sucesso!");
+        alert("Dados salvos com sucesso!");
 
     } catch (e) { 
         console.error("Erro ao salvar:", e);
