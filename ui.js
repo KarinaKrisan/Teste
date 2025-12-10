@@ -1,192 +1,190 @@
-// main.js - Arquivo Principal
-import { db, auth, state, hideLoader, availableMonths } from './config.js';
+// ui.js - Lógica visual compartilhada
+import { state, pad, monthNames, availableMonths } from './config.js'; 
 import * as Admin from './admin-module.js';
-import * as Collab from './collab-module.js';
-import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTable } from './ui.js'; 
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-// --- INICIALIZAÇÃO ---
-const btnLogout = document.getElementById('btnLogout');
-if(btnLogout) {
-    btnLogout.addEventListener('click', async () => { 
-        await signOut(auth); 
-        window.location.href = "start.html"; 
+// --- SELETOR DE MÊS ---
+export function renderMonthSelector(onPrev, onNext) {
+    const container = document.getElementById('monthSelectorContainer');
+    if (!container) return;
+
+    const currentM = state.selectedMonthObj;
+    const label = `${monthNames[currentM.month]} ${currentM.year}`;
+    
+    // Encontra o índice usando o array importado corretamente
+    const currentIndex = availableMonths.findIndex(x => x.year === currentM.year && x.month === currentM.month);
+    
+    // Define se os botões devem estar habilitados
+    const hasPrev = currentIndex > 0;
+    const hasNext = currentIndex < availableMonths.length - 1;
+
+    // HTML do Seletor
+    container.innerHTML = `
+        <div class="flex items-center bg-[#1A1C2E] border border-[#2E3250] rounded-lg p-1 shadow-lg">
+            <button id="btnMonthPrev" class="w-8 h-8 flex items-center justify-center rounded transition-colors ${hasPrev ? 'hover:bg-[#2E3250] text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}" ${!hasPrev ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            
+            <div class="px-4 text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 min-w-[140px] text-center uppercase tracking-wider">
+                ${label}
+            </div>
+
+            <button id="btnMonthNext" class="w-8 h-8 flex items-center justify-center rounded transition-colors ${hasNext ? 'hover:bg-[#2E3250] text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}" ${!hasNext ? 'disabled' : ''}>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    `;
+
+    // Listeners com verificação de existência
+    const btnPrev = document.getElementById('btnMonthPrev');
+    const btnNext = document.getElementById('btnMonthNext');
+    
+    if(btnPrev && hasPrev) btnPrev.onclick = onPrev;
+    if(btnNext && hasNext) btnNext.onclick = onNext;
+}
+
+// --- VISUALIZAÇÃO COMPARTILHADA ---
+
+// 1. Escala Individual (Crachá + Calendário)
+export function updatePersonalView(name) {
+    if(!name || !state.scheduleData[name]) return;
+    const emp = state.scheduleData[name];
+    
+    // Fallbacks para dados
+    const info = emp.info || {};
+    const role = info.Cargo || 'Colaborador';
+    const cell = info.Célula || info.Celula || '--';
+    const shift = info.Turno || '--';
+    const hours = info.Horário || info.Horario || '--';
+
+    const card = document.getElementById('personalInfoCard');
+    if(card) {
+        card.innerHTML = `
+        <div class="badge-card rounded-2xl shadow-2xl p-0 bg-[#1A1C2E] border border-purple-500/20 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
+            <div class="p-6">
+                <div class="flex items-center gap-5">
+                    <div class="flex-shrink-0 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center">
+                        <i class="fas fa-user text-2xl text-purple-300"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">${name}</h2>
+                        <p class="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase mt-1">${role}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-4 mt-6 pt-5 border-t border-white/5">
+                    <div class="text-center md:text-left"><p class="text-[10px] uppercase font-bold text-gray-500">Célula</p><p class="text-sm font-bold text-white font-mono">${cell}</p></div>
+                    <div class="text-center md:text-left"><p class="text-[10px] uppercase font-bold text-gray-500">Turno</p><p class="text-sm font-bold text-white font-mono">${shift}</p></div>
+                    <div class="text-center md:text-left"><p class="text-[10px] uppercase font-bold text-gray-500">Horário</p><p class="text-sm font-bold text-white font-mono">${hours}</p></div>
+                </div>
+            </div>
+        </div>`;
+        card.classList.remove('hidden');
+    }
+    
+    document.getElementById('calendarContainer').classList.remove('hidden');
+    updateCalendar(name, emp.schedule);
+}
+
+export function updateCalendar(name, schedule) {
+    const grid = document.getElementById('calendarGrid');
+    if(!grid) return;
+    
+    grid.innerHTML = '';
+    const empty = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, 1).getDay();
+    for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
+    
+    schedule.forEach((st, i) => {
+        grid.innerHTML += `
+        <div onclick="window.handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group">
+            <span class="text-gray-500 text-xs">${i+1}</span>
+            <div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div>
+        </div>`;
     });
 }
 
-// Slider de data (Visão Diária)
-const ds = document.getElementById('dateSlider');
-if (ds) ds.addEventListener('input', e => { 
-    state.currentDay = parseInt(e.target.value); 
-    if(state.isAdmin) Admin.renderDailyView(); 
-});
-
-onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-        if (!window.location.pathname.includes('start.html') && 
-            !window.location.pathname.includes('login-')) {
-            window.location.href = "start.html";
-        }
+// 2. Plantão Fins de Semana
+export function updateWeekendTable(targetName) {
+    const container = document.getElementById('weekendPlantaoContainer');
+    if(!container) return;
+    
+    container.innerHTML = '';
+    
+    // Se não houver dados, exibe mensagem e sai para evitar erros
+    if(!state.scheduleData || Object.keys(state.scheduleData).length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado de escala disponível.</p>';
         return;
     }
-    state.currentUser = user;
-
-    // Renderiza o seletor de mês
-    updateMonthSelectorUI();
-
-    try {
-        // Tenta Admin
-        const adminSnap = await getDoc(doc(db, "administradores", user.uid));
-        if (adminSnap.exists()) {
-            state.isAdmin = true;
-            await loadData(); 
-            Admin.initAdminUI(); 
-            switchTab('daily');
-        } else {
-            // Tenta Colab
-            const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
-            if (collabSnap.exists()) {
-                state.isAdmin = false;
-                state.profile = collabSnap.data();
-                await loadData(); 
-                Collab.initCollabUI(); 
-                switchTab('personal');
-            } else {
-                alert("Usuário sem perfil!");
-            }
-        }
-    } catch (e) { 
-        console.error(e); 
-        alert("Erro ao carregar sistema. Verifique o console.");
-    } finally { 
-        hideLoader(); 
-    }
-});
-
-// --- LÓGICA DE TROCA DE MÊS ---
-async function handleMonthChange(direction) {
-    const currentIndex = availableMonths.findIndex(
-        m => m.year === state.selectedMonthObj.year && m.month === state.selectedMonthObj.month
-    );
-
-    const newIndex = currentIndex + direction;
-
-    if (newIndex >= 0 && newIndex < availableMonths.length) {
-        state.selectedMonthObj = availableMonths[newIndex];
-        
-        const overlay = document.getElementById('appLoadingOverlay');
-        overlay.classList.remove('hidden', 'opacity-0');
-        
-        updateMonthSelectorUI();
-        await loadData();
-
-        if (state.isAdmin) {
-            Admin.renderDailyView();
-            const selectedEmp = document.getElementById('employeeSelect').value;
-            if (selectedEmp) {
-                updatePersonalView(selectedEmp);
-                updateWeekendTable(null);
-            }
-        } else {
-            updatePersonalView(state.profile.name);
-            updateWeekendTable(null);
-            Collab.initCollabUI(); 
-        }
-
-        setTimeout(() => {
-            overlay.classList.add('opacity-0');
-            setTimeout(() => overlay.classList.add('hidden'), 500);
-        }, 500);
-    }
-}
-
-function updateMonthSelectorUI() {
-    renderMonthSelector(
-        () => handleMonthChange(-1), 
-        () => handleMonthChange(1)
-    );
-}
-
-// --- CARREGAMENTO DE DADOS ---
-async function loadData() {
-    // CORREÇÃO AQUI: Removido o prefixo "escala-" para bater com a imagem do banco
-    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Tentando carregar ID:", docId);
     
-    try {
-        const snap = await getDoc(doc(db, "escalas", docId));
-        state.rawSchedule = snap.exists() ? snap.data() : {};
-        
-        if (!snap.exists()) {
-            console.warn("Nenhum dado encontrado para", docId);
-            state.scheduleData = {};
-        } else {
-            processScheduleData();
-        }
-        
-    } catch (e) { 
-        console.error("Erro loadData:", e); 
-        state.scheduleData = {};
-    }
-}
-
-function processScheduleData() {
-    state.scheduleData = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
-    
-    const slider = document.getElementById('dateSlider');
-    if (slider) { 
-        slider.max = totalDays; 
-        if (state.currentDay > totalDays) state.currentDay = totalDays;
-        slider.value = state.currentDay; 
-    }
 
-    if(state.rawSchedule) {
-        Object.keys(state.rawSchedule).forEach(name => {
-            // Tenta pegar calculatedSchedule, ou schedule, ou cria array vazio
-            let rawS = state.rawSchedule[name].calculatedSchedule || state.rawSchedule[name].schedule;
-            
-            // Fallback se não existir array (baseado na sua imagem que mostrava contadores)
-            if (!rawS || !Array.isArray(rawS)) {
-                 console.warn(`Aviso: ${name} não tem array de escala (calculatedSchedule). Criando vazio.`);
-                 rawS = new Array(totalDays).fill('F');
+    for (let d = 1; d <= totalDays; d++) {
+        const date = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, d);
+        if (date.getDay() === 6) { 
+            const satIndex = d - 1;
+            const sunIndex = d;
+            const hasSunday = (d + 1) <= totalDays;
+            let satWorkers = [], sunWorkers = [];
+
+            Object.keys(state.scheduleData).forEach(name => {
+                // Verificação de segurança extra
+                if (state.scheduleData[name] && state.scheduleData[name].schedule) {
+                    const s = state.scheduleData[name].schedule;
+                    if (s[satIndex] === 'T') satWorkers.push(name);
+                    if (hasSunday && s[sunIndex] === 'T') sunWorkers.push(name);
+                }
+            });
+
+            const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
+
+            if (shouldShow) {
+                const satDate = `${pad(d)}/${pad(state.selectedMonthObj.month+1)}`;
+                const sunDate = hasSunday ? `${pad(d+1)}/${pad(state.selectedMonthObj.month+1)}` : '-';
+                
+                container.insertAdjacentHTML('beforeend', `
+                <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-lg overflow-hidden flex flex-col">
+                    <div class="bg-[#0F1020] p-3 border-b border-cronos-border flex justify-between items-center"><span class="text-sky-400 font-bold text-xs uppercase tracking-wider">Fim de Semana</span></div>
+                    <div class="p-4 space-y-4 flex-1">
+                        <div>
+                            <h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex justify-between"><span>Sábado</span><span class="text-sky-400">${satDate}</span></h4>
+                            <div class="flex flex-wrap gap-1">${satWorkers.map(n=>`<span class="text-xs px-2 py-1 rounded bg-green-900/20 text-green-400 border border-green-500/20 ${n===targetName?'font-bold ring-1 ring-green-500':''}">${n}</span>`).join('')}</div>
+                        </div>
+                        ${hasSunday ? `<div>
+                            <div class="pt-3 border-t border-[#2E3250]"><h4 class="text-gray-500 text-[10px] font-bold uppercase mb-2 flex justify-between"><span>Domingo</span><span class="text-indigo-400">${sunDate}</span></h4>
+                            <div class="flex flex-wrap gap-1">${sunWorkers.map(n=>`<span class="text-xs px-2 py-1 rounded bg-indigo-900/20 text-indigo-400 border border-indigo-500/20 ${n===targetName?'font-bold ring-1 ring-indigo-500':''}">${n}</span>`).join('')}</div></div>
+                        </div>` : ''}
+                    </div>
+                </div>`);
             }
-
-            state.scheduleData[name] = { 
-                info: state.rawSchedule[name], 
-                schedule: rawS 
-            };
-        });
+        }
     }
+    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// --- UTILS ---
-function switchTab(tabName) {
-    document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-    const btn = document.querySelector(`[data-tab="${tabName}"]`);
-    if(btn) btn.classList.add('active');
+// 3. Controle das Sub-Abas (Trocas)
+export function switchSubTab(type) {
+    state.activeRequestType = type;
+
+    const map = {
+        'troca_dia_trabalho': 'subTabWork',
+        'troca_folga': 'subTabOff',
+        'troca_turno': 'subTabShift'
+    };
     
-    const view = document.getElementById(`${tabName}View`);
-    if(view) view.classList.remove('hidden');
-}
-
-document.querySelectorAll('.tab-button').forEach(b => {
-    b.addEventListener('click', () => {
-        if(!state.isAdmin && b.dataset.tab === 'daily') return;
-        switchTab(b.dataset.tab);
+    Object.values(map).forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.remove('sub-tab-active');
     });
-});
 
-window.handleCellClick = (name, dayIndex) => {
-    if(state.isAdmin) {
-        Admin.handleAdminCellClick(name, dayIndex);
-    } else {
-        import('./collab-module.js').then(module => {
-            module.handleCollabCellClick(name, dayIndex);
-        });
+    const activeEl = document.getElementById(map[type]);
+    if(activeEl) activeEl.classList.add('sub-tab-active');
+
+    const btnLabel = document.getElementById('btnNewRequestLabel');
+    if(btnLabel) {
+        const labels = {
+            'troca_dia_trabalho': 'Solicitar Troca de Dia',
+            'troca_folga': 'Solicitar Troca de Folga',
+            'troca_turno': 'Solicitar Troca de Turno'
+        };
+        btnLabel.textContent = labels[type];
     }
-};
-
-window.switchSubTab = switchSubTab;
+}
