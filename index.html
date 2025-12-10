@@ -18,7 +18,7 @@
                 extend: {
                     colors: { cronos: { bg: '#0F1020', card: '#1A1C2E', border: '#2E3250' } },
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: { 'fade-in': 'fadeIn 0.2s ease-out forwards' },
+                    animation: { 'fade-in': 'fadeIn 0.2s ease-out forwards', 'pulse-slow': 'pulse 3s infinite' },
                     keyframes: { fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } } }
                 }
             }
@@ -130,7 +130,12 @@
             </div>
 
             <div id="requestsView" class="tab-content hidden space-y-8">
-                </div>
+                 <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+                    <button id="subTabWork" class="flex-1 bg-[#1A1C2E] border border-cronos-border text-gray-400 py-3 px-4 rounded-xl text-sm font-bold transition-all hover:bg-[#2E3250] focus:outline-none sub-tab-active" onclick="window.switchSubTab('troca_dia_trabalho')">
+                        <i class="fas fa-calendar-day mr-2"></i> Dias Trabalhados
+                    </button>
+                    </div>
+            </div>
         </main>
         
         <footer class="mt-16 py-8 border-t border-cronos-border text-center">
@@ -140,19 +145,10 @@
 
     <div id="requestModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-             <div class="bg-gradient-to-r from-sky-900/20 to-blue-900/20 p-4 border-b border-cronos-border flex justify-between items-center">
-                <h3 class="text-white font-bold"><i class="fas fa-paper-plane text-sky-400 mr-2"></i> Solicitar Alteração</h3>
-                <button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="p-6 space-y-4">
-                 <div id="reqDateDisplay" class="text-sky-400 font-mono font-bold text-lg mb-2">--/--</div>
-                 <input type="date" id="reqDateManual" class="hidden">
-                 <input type="hidden" id="reqDateIndex"><input type="hidden" id="reqEmployeeName">
-                 <select id="reqType" class="hidden"></select>
-                 <div id="swapTargetContainer"><select id="reqTargetEmployee" class="w-full bg-[#0F1020] border border-cronos-border text-white p-2 rounded"></select></div>
-                 <textarea id="reqReason" class="w-full bg-[#0F1020] border border-cronos-border text-white p-2 rounded" placeholder="Motivo"></textarea>
-                 <button id="btnSendRequest" class="w-full bg-sky-600 text-white p-2 rounded">Enviar</button>
-            </div>
+             <div class="p-6 space-y-4">
+                 <button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white absolute top-4 right-4"><i class="fas fa-times"></i></button>
+                 <h3 class="text-white font-bold mb-4">Solicitar Alteração</h3>
+                 </div>
         </div>
     </div>
 
@@ -161,26 +157,14 @@
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
             <div class="p-6">
                 <div class="text-center mb-6">
-                    <div class="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-3 border border-purple-500/20">
-                        <i class="fas fa-pen text-purple-400"></i>
-                    </div>
                     <h3 class="text-xl font-bold text-white">Editar Escala</h3>
                     <p id="adminModalSubtext" class="text-xs text-gray-400 mt-1 uppercase tracking-wider">--</p>
                 </div>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Novo Status</label>
-                        <input type="text" id="adminEditInput" class="w-full bg-[#0F1020] border border-cronos-border text-white text-lg font-mono font-bold rounded-xl p-3 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all uppercase text-center" placeholder="Ex: T, F, FE">
-                    </div>
-                    <div class="flex gap-2 text-[10px] text-gray-500 justify-center font-mono">
-                        <span>T: Trabalho</span><span>F: Folga</span><span>FE: Férias</span>
-                    </div>
-                </div>
-                <input type="hidden" id="adminEditName">
-                <input type="hidden" id="adminEditIndex">
+                <input type="text" id="adminEditInput" class="w-full bg-[#0F1020] border border-cronos-border text-white text-lg font-mono font-bold rounded-xl p-3 outline-none text-center">
+                <input type="hidden" id="adminEditName"><input type="hidden" id="adminEditIndex">
                 <div class="grid grid-cols-2 gap-3 mt-8">
-                    <button id="btnAdminCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm transition-colors">Cancelar</button>
-                    <button id="btnAdminConfirm" class="py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-sm shadow-lg shadow-purple-900/20 transition-all transform hover:scale-[1.02]">Confirmar</button>
+                    <button id="btnAdminCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Cancelar</button>
+                    <button id="btnAdminConfirm" class="py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-sm">Confirmar</button>
                 </div>
             </div>
         </div>
@@ -189,24 +173,36 @@
     <div id="adminSaveModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
         <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-sky-500"></div>
-            
             <div class="p-8 text-center">
                 <div class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 border border-indigo-500/20 animate-pulse-slow">
                     <i class="fas fa-cloud-upload-alt text-2xl text-indigo-400"></i>
                 </div>
                 <h3 class="text-xl font-bold text-white mb-2">Salvar Alterações?</h3>
-                <p class="text-sm text-gray-400 mb-8">
-                    Você está prestes a sincronizar as alterações da escala com o banco de dados.
+                <p class="text-sm text-gray-400 mb-8">Você está prestes a sincronizar as alterações com o banco de dados.</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btnSaveCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Voltar</button>
+                    <button id="btnSaveConfirm" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm">Sim, Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="successModal" class="hidden fixed inset-0 z-[90] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
+        <div class="bg-[#1A1C2E] border border-green-500/30 rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500"></div>
+            
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-5 border border-green-500/20">
+                    <i class="fas fa-check-circle text-3xl text-green-400"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-white mb-2">Sucesso!</h3>
+                <p id="successMessage" class="text-sm text-gray-400 mb-8">
+                    Dados salvos corretamente.
                 </p>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <button id="btnSaveCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm transition-colors">
-                        Voltar
-                    </button>
-                    <button id="btnSaveConfirm" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm shadow-lg shadow-indigo-900/20 transition-all transform hover:scale-[1.02]">
-                        Sim, Salvar
-                    </button>
-                </div>
+                <button onclick="document.getElementById('successModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg shadow-green-900/20 transition-all transform hover:scale-[1.02]">
+                    OK, Entendi
+                </button>
             </div>
         </div>
     </div>
