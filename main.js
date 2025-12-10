@@ -36,7 +36,6 @@ onAuthStateChanged(auth, async (user) => {
     updateMonthSelectorUI();
 
     try {
-        // Tenta carregar perfil de Admin
         const adminSnap = await getDoc(doc(db, "administradores", user.uid));
         if (adminSnap.exists()) {
             state.isAdmin = true;
@@ -44,7 +43,6 @@ onAuthStateChanged(auth, async (user) => {
             Admin.initAdminUI(); 
             switchTab('daily');
         } else {
-            // Tenta carregar perfil de Colaborador
             const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
             if (collabSnap.exists()) {
                 state.isAdmin = false;
@@ -53,14 +51,13 @@ onAuthStateChanged(auth, async (user) => {
                 Collab.initCollabUI(); 
                 switchTab('personal');
             } else {
-                alert("Acesso Negado: Usuário sem perfil de colaborador ou admin.");
+                alert("Acesso Negado: Usuário sem perfil.");
             }
         }
     } catch (e) { 
-        console.error("Erro crítico na inicialização:", e); 
-        alert("Ocorreu um erro ao carregar os dados. Verifique o console (F12) para detalhes.");
+        console.error("Erro crítico:", e); 
+        alert("Erro ao carregar sistema. Verifique o console.");
     } finally { 
-        // Remove a tela de carregamento em QUALQUER situação
         hideLoader(); 
     }
 });
@@ -76,14 +73,12 @@ async function handleMonthChange(direction) {
     if (newIndex >= 0 && newIndex < availableMonths.length) {
         state.selectedMonthObj = availableMonths[newIndex];
         
-        // Mostra loader
         const overlay = document.getElementById('appLoadingOverlay');
         overlay.classList.remove('hidden', 'opacity-0');
         
         updateMonthSelectorUI();
         await loadData();
 
-        // Atualiza UI
         if (state.isAdmin) {
             Admin.renderDailyView();
             const selectedEmp = document.getElementById('employeeSelect').value;
@@ -97,7 +92,6 @@ async function handleMonthChange(direction) {
             Collab.initCollabUI(); 
         }
 
-        // Esconde loader
         setTimeout(() => {
             overlay.classList.add('opacity-0');
             setTimeout(() => overlay.classList.add('hidden'), 500);
@@ -114,31 +108,34 @@ function updateMonthSelectorUI() {
 
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
-    // Define o ID do documento (ex: 2025-12)
+    // ID baseado no formato do seu banco: YYYY-MM (ex: 2025-11)
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando escala do mês:", docId);
+    console.log("Lendo documento:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
         
         if (!snap.exists()) {
-            console.warn(`Escala ${docId} não encontrada no banco. Iniciando vazio.`);
+            console.warn(`Documento ${docId} não encontrado.`);
             state.scheduleData = {};
         } else {
             processScheduleData();
         }
         
     } catch (e) { 
-        console.error("Erro em loadData:", e); 
-        state.scheduleData = {}; // Evita quebrar a UI
+        console.error("Erro no loadData:", e); 
+        state.scheduleData = {}; 
     }
 }
 
 function processScheduleData() {
     state.scheduleData = {};
-    const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
+    const year = state.selectedMonthObj.year;
+    const month = state.selectedMonthObj.month; // 0-11
+    const totalDays = new Date(year, month+1, 0).getDate();
     
+    // Configura o slider
     const slider = document.getElementById('dateSlider');
     if (slider) { 
         slider.max = totalDays; 
@@ -149,28 +146,64 @@ function processScheduleData() {
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(name => {
             const userData = state.rawSchedule[name];
-            
-            // --- PROTEÇÃO CONTRA FORMATO INCORRETO DO BANCO ---
-            // Tenta pegar o array de dias. Se não existir (porque o banco tem formato antigo), cria um array vazio.
-            let rawS = userData.calculatedSchedule || userData.schedule;
-            
-            if (!Array.isArray(rawS)) {
-                 console.warn(`Corrigindo dados para: ${name}. Criando escala padrão vazia.`);
-                 rawS = new Array(totalDays).fill('F');
+            let finalSchedule = [];
+
+            // 1. TENTA LER A LISTA PRONTA (Se já foi salvo pelo Admin novo)
+            if (userData.calculatedSchedule && Array.isArray(userData.calculatedSchedule)) {
+                finalSchedule = userData.calculatedSchedule;
+            } 
+            else if (userData.schedule && Array.isArray(userData.schedule)) {
+                finalSchedule = userData.schedule;
             }
-            
-            // Se o array existir mas for curto, completa com 'F'
-            if (rawS.length < totalDays) {
-                const diff = totalDays - rawS.length;
-                for(let i=0; i<diff; i++) rawS.push('F');
+            // 2. SE NÃO TIVER LISTA, TENTA "TRADUZIR" AS REGRAS DO BANCO (2025-11)
+            else {
+                console.log(`Gerando escala baseada em regras para: ${name}`);
+                finalSchedule = generateScheduleFromRules(userData, year, month, totalDays);
+            }
+
+            // Garante que o array tenha o tamanho certo
+            if (finalSchedule.length < totalDays) {
+                const diff = totalDays - finalSchedule.length;
+                for(let i=0; i<diff; i++) finalSchedule.push('F');
             }
 
             state.scheduleData[name] = { 
                 info: userData, 
-                schedule: rawS 
+                schedule: finalSchedule 
             };
         });
     }
+}
+
+// --- FUNÇÃO DE TRADUÇÃO DE REGRAS (NOVA) ---
+function generateScheduleFromRules(data, year, month, totalDays) {
+    const arr = [];
+    // Normaliza os textos do banco para minúsculas para facilitar a comparação
+    const ruleT = data.T ? data.T.toLowerCase() : "";
+    const ruleF = data.F ? data.F.toLowerCase() : "";
+
+    for (let d = 1; d <= totalDays; d++) {
+        const date = new Date(year, month, d);
+        const dayOfWeek = date.getDay(); // 0 = Domingo, 6 = Sábado
+
+        let status = 'F'; // Status padrão
+
+        // Lógica para "Segunda a Sexta"
+        if (ruleT.includes("segunda a sexta") || ruleT.includes("segunda à sexta")) {
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) status = 'T';
+        }
+
+        // Lógica para "Fins de Semana" (sobrescreve se necessário)
+        if (ruleF.includes("fins de semana") || ruleF.includes("fim de semana")) {
+            if (dayOfWeek === 0 || dayOfWeek === 6) status = 'F';
+        }
+        
+        // Se no banco 2025-12 as chaves existirem mas estiverem vazias, assume F padrão
+        // Se houver lógica específica para T ou F que não seja texto, adicione aqui.
+
+        arr.push(status);
+    }
+    return arr;
 }
 
 // --- UTILS ---
