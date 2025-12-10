@@ -1,6 +1,5 @@
 // admin-module.js
 import { db, state, isWorkingTime, pad, daysOfWeek } from './config.js';
-// Importação correta do Firestore
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
@@ -17,18 +16,19 @@ export function initAdminUI() {
     document.getElementById('tabRequests').classList.add('hidden'); 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // SETUP MODAIS
+    // SETUP MODAL DE EDIÇÃO
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
     if(btnCancelEdit) btnCancelEdit.onclick = closeAdminModal;
 
+    // SETUP MODAL DE SALVAR
     const btnOpenSave = document.getElementById('btnOpenSaveModal');
     const btnConfirmSave = document.getElementById('btnSaveConfirm');
     const btnCancelSave = document.getElementById('btnSaveCancel');
 
     if(btnOpenSave) btnOpenSave.onclick = openSaveModal;
-    if(btnConfirmSave) btnConfirmSave.onclick = confirmSaveToCloud; // Conecta a função de salvar
+    if(btnConfirmSave) btnConfirmSave.onclick = confirmSaveToCloud;
     if(btnCancelSave) btnCancelSave.onclick = closeSaveModal;
 
     populateEmployeeSelect();
@@ -59,7 +59,7 @@ export function populateEmployeeSelect() {
     };
 }
 
-// --- MODAL DE EDIÇÃO ---
+// --- FUNÇÕES DO MODAL DE EDIÇÃO ---
 export function handleAdminCellClick(name, dayIndex) {
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
@@ -89,7 +89,6 @@ function confirmAdminEdit() {
     
     if (!newStatus) { alert("Digite um status."); return; }
 
-    // Atualiza Memória
     state.rawSchedule[name].calculatedSchedule[dayIndex] = newStatus;
     
     if(state.scheduleData[name] && state.scheduleData[name].schedule) {
@@ -108,7 +107,7 @@ function closeAdminModal() {
     document.getElementById('adminEditModal').classList.add('hidden');
 }
 
-// --- MODAL DE SALVAR (AQUI ESTÁ A CORREÇÃO PRINCIPAL) ---
+// --- FUNÇÕES DO MODAL DE SALVAR ---
 function openSaveModal() {
     document.getElementById('adminSaveModal').classList.remove('hidden');
 }
@@ -117,30 +116,27 @@ function closeSaveModal() {
     document.getElementById('adminSaveModal').classList.add('hidden');
 }
 
+// --- AQUI ESTÁ A LÓGICA DE SALVAMENTO CORRETA ---
 async function confirmSaveToCloud() {
     const btnConfirm = document.getElementById('btnSaveConfirm');
     const originalText = btnConfirm.innerHTML;
     
-    // Feedback de Loading
     btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
     btnConfirm.disabled = true;
 
-    // ID CORRETO: Sem prefixo "escala-", apenas YYYY-MM
+    // LÓGICA DE NOMECLATURA: YYYY-MM (Ex: 2025-12)
+    // Se month for 11 (Dezembro), month+1 vira 12. padStart garante o zero se for menor que 10.
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Salvando em:", docId); // Debug no console
+    
+    console.log("Salvando na coleção 'escalas', documento:", docId);
 
     try {
-        // Envia para o Firestore
+        // Salva exatamente em: escalas > 2025-12
         await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
         
-        // Sucesso
         closeSaveModal();
+        alert("Dados salvos com sucesso em " + docId); 
         
-        // Mostra o modal de sucesso do sistema (se tiver) ou alerta nativo
-        // Aqui mantemos o alerta nativo ou toast simples para garantir feedback
-        alert("Dados salvos com sucesso no banco de dados!"); 
-        
-        // Reseta UI da Toolbar para "Sincronizado"
         const statusLabel = document.getElementById('saveStatus');
         const btnToolbar = document.getElementById('btnOpenSaveModal');
         
@@ -157,7 +153,7 @@ async function confirmSaveToCloud() {
 
     } catch (e) { 
         console.error("Erro crítico ao salvar:", e);
-        alert("ERRO AO SALVAR: " + e.message + "\nVerifique sua conexão e permissões.");
+        alert("ERRO AO SALVAR: " + e.message);
     } finally {
         btnConfirm.innerHTML = originalText;
         btnConfirm.disabled = false;
