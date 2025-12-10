@@ -3,7 +3,6 @@ import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
 import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTable } from './ui.js'; 
-// ADICIONADO: collection e getDocs para ler os perfis
 import { doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
@@ -31,28 +30,49 @@ onAuthStateChanged(auth, async (user) => {
         return;
     }
     state.currentUser = user;
-
     updateMonthSelectorUI();
 
     try {
+        // 1. Verifica se é Admin
         const adminSnap = await getDoc(doc(db, "administradores", user.uid));
-        if (adminSnap.exists()) {
+        // 2. Verifica se é Colaborador TAMBÉM
+        const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
+
+        state.hasDualRole = (adminSnap.exists() && collabSnap.exists());
+
+        if (state.hasDualRole) {
+            // Se tiver os dois, carrega o perfil de colaborador para usar na troca
+            state.profile = collabSnap.data();
+            
+            // Inicia como Admin por padrão
             state.isAdmin = true;
-            await loadData(); // Agora carrega perfis também
+            await loadData();
+            Admin.initAdminUI();
+            
+            // Adiciona o botão de troca
+            renderSwitchModeButton();
+        } 
+        else if (adminSnap.exists()) {
+            // Apenas Admin
+            state.isAdmin = true;
+            await loadData(); 
             Admin.initAdminUI(); 
-            switchTab('daily');
-        } else {
-            const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
-            if (collabSnap.exists()) {
-                state.isAdmin = false;
-                state.profile = collabSnap.data();
-                await loadData(); 
-                Collab.initCollabUI(); 
-                switchTab('personal');
-            } else {
-                alert("Usuário sem perfil válido.");
-            }
+        } 
+        else if (collabSnap.exists()) {
+            // Apenas Colaborador
+            state.isAdmin = false;
+            state.profile = collabSnap.data();
+            await loadData(); 
+            Collab.initCollabUI(); 
+        } 
+        else {
+            alert("Usuário sem perfil válido.");
         }
+        
+        // Define aba inicial
+        if(state.isAdmin) switchTab('daily');
+        else switchTab('personal');
+
     } catch (e) { 
         console.error("Erro Fatal:", e); 
         alert("Erro ao iniciar sistema.");
@@ -60,6 +80,69 @@ onAuthStateChanged(auth, async (user) => {
         hideLoader(); 
     }
 });
+
+// --- FUNÇÃO DE ALTERNAR MODO (NOVA) ---
+window.toggleUserMode = async () => {
+    const overlay = document.getElementById('appLoadingOverlay');
+    overlay.classList.remove('hidden', 'opacity-0');
+
+    // Inverte o modo
+    state.isAdmin = !state.isAdmin;
+
+    // Recarrega a UI correta
+    if (state.isAdmin) {
+        Admin.initAdminUI();
+        switchTab('daily');
+    } else {
+        Collab.initCollabUI();
+        switchTab('personal');
+    }
+
+    // Atualiza o texto do botão
+    renderSwitchModeButton();
+    
+    // Atualiza dados na tela
+    if (state.isAdmin) {
+        Admin.renderDailyView();
+        // Se tiver alguém selecionado, atualiza
+        const sel = document.getElementById('employeeSelect');
+        if(sel && sel.value) updatePersonalView(sel.value);
+    } else {
+        updatePersonalView(state.profile.name);
+    }
+    updateWeekendTable(null);
+
+    // Esconde loader
+    setTimeout(() => {
+        overlay.classList.add('opacity-0');
+        setTimeout(() => overlay.classList.add('hidden'), 500);
+    }, 500);
+};
+
+function renderSwitchModeButton() {
+    const existingBtn = document.getElementById('btnToggleMode');
+    if (existingBtn) existingBtn.remove();
+
+    if (!state.hasDualRole) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'btnToggleMode';
+    btn.onclick = window.toggleUserMode;
+    
+    const isNowAdmin = state.isAdmin;
+    
+    btn.className = `fixed bottom-24 right-6 z-50 px-4 py-3 rounded-full shadow-2xl font-bold text-xs flex items-center gap-2 transition-all hover:scale-105 ${
+        isNowAdmin 
+        ? 'bg-sky-600 hover:bg-sky-500 text-white border border-sky-400' 
+        : 'bg-purple-600 hover:bg-purple-500 text-white border border-purple-400'
+    }`;
+
+    btn.innerHTML = isNowAdmin 
+        ? '<i class="fas fa-user-astronaut"></i> Ver como Colaborador' 
+        : '<i class="fas fa-shield-alt"></i> Ver como Admin';
+
+    document.body.appendChild(btn);
+}
 
 // --- LÓGICA DE NAVEGAÇÃO ---
 async function handleMonthChange(direction) {
@@ -78,13 +161,14 @@ async function handleMonthChange(direction) {
 
         if (state.isAdmin) {
             Admin.renderDailyView();
-            const selectedEmp = document.getElementById('employeeSelect').value;
-            if (selectedEmp) {
-                updatePersonalView(selectedEmp);
+            const selectedEmp = document.getElementById('employeeSelect');
+            if (selectedEmp && selectedEmp.value) {
+                updatePersonalView(selectedEmp.value);
                 updateWeekendTable(null);
             }
         } else {
-            updatePersonalView(state.profile.name);
+            // Se estiver no modo collab, usa o perfil carregado
+            if(state.profile) updatePersonalView(state.profile.name);
             updateWeekendTable(null);
             Collab.initCollabUI(); 
         }
@@ -100,25 +184,22 @@ function updateMonthSelectorUI() {
     renderMonthSelector(() => handleMonthChange(-1), () => handleMonthChange(1));
 }
 
-// --- CARREGAMENTO DE DADOS (ATUALIZADO) ---
+// --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     console.log("Carregando mês:", docId);
     
     try {
-        // 1. Carrega a Escala do Mês
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
-        if (!snap.exists()) console.warn("Mês sem dados de escala.");
 
-        // 2. Carrega PERFIS (Célula, Turno, Horário) se for Admin
-        if (state.isAdmin && !state.employeesCache) {
+        // Carrega Cache de Perfis (Apenas uma vez ou se for Admin/Dual)
+        if ((state.isAdmin || state.hasDualRole) && !state.employeesCache) {
             console.log("Carregando banco de perfis...");
             const collabSnap = await getDocs(collection(db, "colaboradores"));
             state.employeesCache = {};
             collabSnap.forEach(doc => {
                 const data = doc.data();
-                // Usa o nome como chave para facilitar busca
                 if(data.name) state.employeesCache[data.name] = data;
             });
         }
@@ -142,21 +223,18 @@ function processScheduleData() {
 
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(name => {
-            let userData = state.rawSchedule[name]; // Dados do mês (só tem T/F)
+            let userData = state.rawSchedule[name]; 
             
-            // --- MISTURA DADOS: Pega info extra do Perfil (employeesCache) ---
-            if (state.isAdmin && state.employeesCache && state.employeesCache[name]) {
-                // Combina os dados do mês com os dados fixos do perfil (Célula, Turno, etc)
+            // Mistura dados de perfil
+            if (state.employeesCache && state.employeesCache[name]) {
                 userData = { ...state.employeesCache[name], ...userData };
             } 
-            // Se for Colaborador logado, usa o próprio perfil
-            else if (!state.isAdmin && state.profile && state.profile.name === name) {
+            else if (state.profile && state.profile.name === name) {
                 userData = { ...state.profile, ...userData };
             }
 
             let finalSchedule = [];
 
-            // Lógica de Escala (Híbrida)
             if (userData.calculatedSchedule && Array.isArray(userData.calculatedSchedule)) {
                 finalSchedule = userData.calculatedSchedule;
             } 
@@ -173,7 +251,7 @@ function processScheduleData() {
             }
 
             state.scheduleData[name] = { 
-                info: userData, // Agora contém Célula/Turno vindo do perfil
+                info: userData, 
                 schedule: finalSchedule 
             };
         });
