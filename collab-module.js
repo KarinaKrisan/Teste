@@ -4,13 +4,12 @@ import { addDoc, updateDoc, doc, collection, serverTimestamp, query, where, onSn
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
 export function initCollabUI() {
-    // 1. Limpa UI de Admin
-    ['adminToolbar', 'adminEditHint', 'employeeSelectContainer'].forEach(id => {
+    // 1. Limpa UI de Admin e ajusta visualização
+    ['adminToolbar', 'adminEditHint', 'employeeSelectContainer', 'adminRequestsPanel'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.add('hidden');
     });
     
-    // 2. Verifica se o perfil tem nome válido
     const userName = (state.profile && state.profile.name) ? state.profile.name : null;
     const welcome = document.getElementById('welcomeUser');
 
@@ -23,7 +22,7 @@ export function initCollabUI() {
         }
     }
 
-    // 3. Mostra as Abas corretas
+    // Mostra as abas corretas
     document.getElementById('tabDaily').classList.add('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.remove('hidden');
@@ -31,7 +30,6 @@ export function initCollabUI() {
     if(userName) updatePersonalView(userName);
     updateWeekendTable(null); 
     
-    // 4. Só inicia busca no banco se tiver nome, para evitar o erro "invalid data"
     if (userName) {
         initRequestsTab(); 
     }
@@ -40,6 +38,7 @@ export function initCollabUI() {
 }
 
 function setupEventListeners() {
+    // Helper para substituir botões e limpar eventos antigos
     const replaceBtn = (id, fn) => {
         const old = document.getElementById(id);
         if(old) {
@@ -53,20 +52,8 @@ function setupEventListeners() {
     replaceBtn('btnSendRequest', sendRequest);
 
     const reqType = document.getElementById('reqType');
-    if(reqType) {
-        reqType.onchange = (e) => {
-            toggleTargetSelect(e.target.value);
-        };
-    }
-}
-
-function toggleTargetSelect(type) {
-    const targetContainer = document.getElementById('swapTargetContainer');
-    const isShiftSwap = (type === 'troca_turno');
-    // Se for turno, esconde o campo de colega (vai pro líder)
-    if (targetContainer) {
-        targetContainer.classList.toggle('hidden', isShiftSwap);
-    }
+    // Monitora a mudança na sub-aba (controlada pelo ui.js via state.activeRequestType)
+    // Vamos adicionar um observer ou apenas garantir que ao abrir o modal leia o estado
 }
 
 export function handleCollabCellClick(name, dayIndex) {
@@ -101,8 +88,18 @@ function prepareModalCommon() {
     const currentType = state.activeRequestType || 'troca_dia_trabalho';
     document.getElementById('reqType').value = currentType;
     
-    toggleTargetSelect(currentType);
-    setupModalTargetSelect();
+    // Configura visibilidade do campo "Colega"
+    const targetContainer = document.getElementById('swapTargetContainer');
+    const isShiftSwap = (currentType === 'troca_turno');
+    
+    if (targetContainer) {
+        if (isShiftSwap) {
+            targetContainer.classList.add('hidden');
+        } else {
+            targetContainer.classList.remove('hidden');
+            setupModalTargetSelect();
+        }
+    }
     
     document.getElementById('requestModal').classList.remove('hidden');
 }
@@ -124,13 +121,13 @@ function setupModalTargetSelect() {
     }
 }
 
-// --- ENVIO ---
+// --- ENVIO DA SOLICITAÇÃO ---
 async function sendRequest() {
     const btn = document.getElementById('btnSendRequest');
     btn.innerHTML = 'Enviando...'; btn.disabled = true;
 
     try {
-        const type = document.getElementById('reqType').value;
+        const type = state.activeRequestType || 'troca_dia_trabalho'; // Pega do estado global
         let idx = document.getElementById('reqDateIndex').value;
         const name = state.profile.name;
 
@@ -153,7 +150,9 @@ async function sendRequest() {
         if (!isShiftSwap && !targetInput) throw new Error("Selecione com quem deseja trocar.");
         if (!reason) throw new Error("Informe o motivo.");
 
-        // Se for Turno -> pending_leader. Se for Dia/Folga -> pending_peer
+        // LÓGICA DE DESTINO
+        // Troca de Turno -> Vai direto para o Líder (pending_leader)
+        // Troca de Dia/Folga -> Vai para o Colega (pending_peer)
         const initialStatus = isShiftSwap ? 'pending_leader' : 'pending_peer';
         const targetUser = isShiftSwap ? 'LÍDER' : targetInput;
 
@@ -171,31 +170,32 @@ async function sendRequest() {
         });
         
         document.getElementById('requestModal').classList.add('hidden');
-        alert("Solicitação enviada!");
+        alert("Solicitação enviada com sucesso!");
         document.getElementById('reqReason').value = '';
         document.getElementById('reqTargetEmployee').value = '';
 
     } catch(e) { 
         alert("Erro: " + e.message); 
     } finally { 
-        btn.innerHTML = 'Enviar'; btn.disabled = false; 
+        btn.innerHTML = 'Enviar Solicitação'; btn.disabled = false; 
     }
 }
 
 // --- APROVAÇÃO (COLEGA) ---
 window.processCollabRequest = async (reqId, action) => {
-    if(!confirm(`Deseja ${action === 'accept' ? 'ACEITAR' : 'RECUSAR'} esta troca?`)) return;
+    if(!confirm(`Deseja ${action === 'accept' ? 'ACEITAR' : 'RECUSAR'} esta solicitação?`)) return;
 
     try {
         const reqRef = doc(db, "solicitacoes", reqId);
         
         if (action === 'accept') {
-            // Colega aceitou -> Vai para o líder
+            // Colega aceitou -> O status muda para 'pending_leader' para o admin ver
             await updateDoc(reqRef, { status: 'pending_leader' });
-            alert("Aceito! Encaminhado para o líder.");
+            alert("Você aceitou a troca! Agora a solicitação foi enviada para aprovação do LÍDER.");
         } else {
+            // Colega recusou -> Status 'rejected' e fim de papo
             await updateDoc(reqRef, { status: 'rejected' });
-            alert("Recusado.");
+            alert("Solicitação recusada e encerrada.");
         }
     } catch (e) {
         console.error(e);
@@ -203,13 +203,13 @@ window.processCollabRequest = async (reqId, action) => {
     }
 };
 
-// --- LISTAGEM ---
+// --- LISTAGEM DE SOLICITAÇÕES ---
 function initRequestsTab() {
     if (!state.profile || !state.profile.name) return;
 
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // ENVIADAS
+    // 1. LISTA DE ENVIADAS (Pelo usuário logado)
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", state.profile.name));
     onSnapshot(qSent, (snap) => {
         const list = document.getElementById('sentRequestsList');
@@ -229,19 +229,23 @@ function initRequestsTab() {
             if(r.status === 'approved') { stLabel = 'Aprovado'; stColor = 'text-green-400'; }
             if(r.status === 'rejected') { stLabel = 'Recusado'; stColor = 'text-red-400'; }
 
+            const targetDisplay = r.target === 'LÍDER' ? 'Admin/Líder' : r.target;
+
             list.innerHTML += `
             <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-[#2E3250] flex justify-between items-center">
                 <div>
                     <div class="text-[10px] text-sky-400 font-bold mb-1">${typeDisplay} • Dia ${r.dayIndex+1}</div>
-                    <div class="text-xs text-gray-300">Para: <span class="text-white">${r.target}</span></div>
-                    <div class="text-[10px] text-gray-500 italic">"${r.reason}"</div>
+                    <div class="text-xs text-gray-300">Para: <span class="text-white font-bold">${targetDisplay}</span></div>
+                    <div class="text-[10px] text-gray-500 italic mt-1">"${r.reason}"</div>
                 </div>
-                <span class="text-[9px] font-bold uppercase border border-gray-700 px-2 py-1 rounded ${stColor}">${stLabel}</span>
+                <div class="flex flex-col items-end gap-1">
+                    <span class="text-[9px] font-bold uppercase border border-gray-700 px-2 py-1 rounded ${stColor}">${stLabel}</span>
+                </div>
             </div>`;
         });
     });
 
-    // RECEBIDAS (Para eu aprovar)
+    // 2. LISTA DE RECEBIDAS (Onde o usuário é o TARGET e precisa aprovar)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -251,25 +255,26 @@ function initRequestsTab() {
 
         snap.forEach(d => {
             const r = d.data();
-            // Só mostra se for para MIM e estiver esperando APROVAÇÃO (pending_peer)
+            // Só mostra se estiver esperando APROVAÇÃO DO COLEGA (pending_peer)
             if(r.status === 'pending_peer') {
                 count++;
                 list.innerHTML += `
-                <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-yellow-500/30">
+                <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-yellow-500/30 shadow-lg shadow-yellow-900/10">
                     <div class="flex justify-between mb-2">
-                        <span class="text-yellow-500 font-bold text-xs uppercase">Solicitação de ${r.requester}</span>
-                        <span class="text-xs text-gray-400">Dia ${r.dayIndex+1}</span>
+                        <span class="text-yellow-400 font-bold text-xs uppercase flex items-center gap-2"><i class="fas fa-exclamation-triangle"></i> Requer sua atenção</span>
+                        <span class="text-xs text-white font-mono bg-gray-800 px-2 rounded">Dia ${r.dayIndex+1}</span>
                     </div>
-                    <div class="text-xs text-white mb-1">Tipo: ${r.type.replace(/_/g, ' ')}</div>
-                    <div class="text-xs text-gray-400 italic mb-3">"${r.reason}"</div>
+                    <div class="text-sm text-white mb-1 font-bold">${r.requester} quer trocar com você.</div>
+                    <div class="text-xs text-gray-400 mb-1">Tipo: ${r.type.replace(/_/g, ' ').toUpperCase()}</div>
+                    <div class="text-xs text-gray-500 italic mb-3 bg-[#161828] p-2 rounded">"${r.reason}"</div>
                     <div class="flex gap-2">
-                        <button onclick="window.processCollabRequest('${d.id}','accept')" class="flex-1 bg-green-600/20 text-green-400 border border-green-600/50 py-1.5 rounded text-xs font-bold hover:bg-green-600 hover:text-white transition">Aceitar</button>
-                        <button onclick="window.processCollabRequest('${d.id}','reject')" class="flex-1 bg-red-600/20 text-red-400 border border-red-600/50 py-1.5 rounded text-xs font-bold hover:bg-red-600 hover:text-white transition">Recusar</button>
+                        <button onclick="window.processCollabRequest('${d.id}','accept')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg text-xs font-bold transition shadow-lg shadow-green-900/20">ACEITAR</button>
+                        <button onclick="window.processCollabRequest('${d.id}','reject')" class="flex-1 bg-[#1A1C2E] border border-red-500/50 text-red-400 hover:bg-red-900/20 py-2 rounded-lg text-xs font-bold transition">RECUSAR</button>
                     </div>
                 </div>`;
             }
         });
 
-        if (count === 0) list.innerHTML = '<p class="text-center text-gray-500 text-xs py-2">Nenhuma pendente.</p>';
+        if (count === 0) list.innerHTML = '<p class="text-center text-gray-500 text-xs py-4">Nenhuma solicitação pendente para você.</p>';
     });
 }
