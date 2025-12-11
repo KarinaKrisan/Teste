@@ -33,45 +33,35 @@ onAuthStateChanged(auth, async (user) => {
     updateMonthSelectorUI();
 
     try {
-        // 1. Verifica se é Admin
         const adminSnap = await getDoc(doc(db, "administradores", user.uid));
-        // 2. Verifica se é Colaborador TAMBÉM
         const collabSnap = await getDoc(doc(db, "colaboradores", user.uid));
 
         state.hasDualRole = (adminSnap.exists() && collabSnap.exists());
 
         if (state.hasDualRole) {
-            // Se tiver os dois, carrega o perfil de colaborador para usar na troca
-            state.profile = collabSnap.data();
-            
-            // Inicia como Admin por padrão
-            state.isAdmin = true;
+            state.profile = collabSnap.data(); // Guarda perfil para usar depois
+            state.isAdmin = true; // Começa como Admin
             await loadData();
             Admin.initAdminUI();
-            
-            // Adiciona o botão de troca
             renderSwitchModeButton();
         } 
         else if (adminSnap.exists()) {
-            // Apenas Admin
             state.isAdmin = true;
             await loadData(); 
             Admin.initAdminUI(); 
         } 
         else if (collabSnap.exists()) {
-            // Apenas Colaborador
             state.isAdmin = false;
             state.profile = collabSnap.data();
             await loadData(); 
             Collab.initCollabUI(); 
+            switchTab('personal');
         } 
         else {
             alert("Usuário sem perfil válido.");
         }
         
-        // Define aba inicial
         if(state.isAdmin) switchTab('daily');
-        else switchTab('personal');
 
     } catch (e) { 
         console.error("Erro Fatal:", e); 
@@ -81,42 +71,49 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// --- FUNÇÃO DE ALTERNAR MODO (NOVA) ---
+// --- FUNÇÃO DE ALTERNAR MODO (CORRIGIDA E SEGURA) ---
 window.toggleUserMode = async () => {
     const overlay = document.getElementById('appLoadingOverlay');
     overlay.classList.remove('hidden', 'opacity-0');
 
-    // Inverte o modo
-    state.isAdmin = !state.isAdmin;
+    try {
+        // Inverte o modo
+        state.isAdmin = !state.isAdmin;
 
-    // Recarrega a UI correta
-    if (state.isAdmin) {
-        Admin.initAdminUI();
-        switchTab('daily');
-    } else {
-        Collab.initCollabUI();
-        switchTab('personal');
+        // Recarrega a UI correta
+        if (state.isAdmin) {
+            Admin.initAdminUI();
+            switchTab('daily');
+            Admin.renderDailyView();
+            
+            // Restaura seleção anterior se houver
+            const sel = document.getElementById('employeeSelect');
+            if(sel && sel.value) updatePersonalView(sel.value);
+        } else {
+            // Modo Colaborador
+            if(!state.profile) throw new Error("Perfil de colaborador não encontrado na memória.");
+            
+            Collab.initCollabUI();
+            switchTab('personal');
+            
+            // Força atualização da visualização pessoal
+            updatePersonalView(state.profile.name);
+        }
+        
+        updateWeekendTable(null);
+        renderSwitchModeButton(); // Atualiza texto do botão
+
+    } catch (error) {
+        console.error("Erro ao trocar de modo:", error);
+        alert("Erro ao trocar de visão: " + error.message);
+        state.isAdmin = !state.isAdmin; // Reverte mudança em caso de erro
+    } finally {
+        // Garante que o loader suma SEMPRE
+        setTimeout(() => {
+            overlay.classList.add('opacity-0');
+            setTimeout(() => overlay.classList.add('hidden'), 500);
+        }, 500);
     }
-
-    // Atualiza o texto do botão
-    renderSwitchModeButton();
-    
-    // Atualiza dados na tela
-    if (state.isAdmin) {
-        Admin.renderDailyView();
-        // Se tiver alguém selecionado, atualiza
-        const sel = document.getElementById('employeeSelect');
-        if(sel && sel.value) updatePersonalView(sel.value);
-    } else {
-        updatePersonalView(state.profile.name);
-    }
-    updateWeekendTable(null);
-
-    // Esconde loader
-    setTimeout(() => {
-        overlay.classList.add('opacity-0');
-        setTimeout(() => overlay.classList.add('hidden'), 500);
-    }, 500);
 };
 
 function renderSwitchModeButton() {
@@ -164,14 +161,12 @@ async function handleMonthChange(direction) {
             const selectedEmp = document.getElementById('employeeSelect');
             if (selectedEmp && selectedEmp.value) {
                 updatePersonalView(selectedEmp.value);
-                updateWeekendTable(null);
             }
         } else {
-            // Se estiver no modo collab, usa o perfil carregado
             if(state.profile) updatePersonalView(state.profile.name);
-            updateWeekendTable(null);
             Collab.initCollabUI(); 
         }
+        updateWeekendTable(null);
 
         setTimeout(() => {
             overlay.classList.add('opacity-0');
@@ -187,15 +182,13 @@ function updateMonthSelectorUI() {
 // --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    console.log("Carregando mês:", docId);
     
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
 
-        // Carrega Cache de Perfis (Apenas uma vez ou se for Admin/Dual)
+        // Carrega Cache de Perfis (Se Admin ou Dual)
         if ((state.isAdmin || state.hasDualRole) && !state.employeesCache) {
-            console.log("Carregando banco de perfis...");
             const collabSnap = await getDocs(collection(db, "colaboradores"));
             state.employeesCache = {};
             collabSnap.forEach(doc => {
@@ -203,9 +196,7 @@ async function loadData() {
                 if(data.name) state.employeesCache[data.name] = data;
             });
         }
-
         processScheduleData();
-        
     } catch (e) { 
         console.error("Erro loadData:", e); 
         state.scheduleData = {}; 
