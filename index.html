@@ -75,9 +75,10 @@
                 <i class="fas fa-users-cog"></i> Escala & Plantões
             </button>
             
-            <button id="tabRequests" data-tab="requests" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 relative">
-                <i class="fas fa-exchange-alt"></i> Central de Trocas
-                <span id="requestsBadge" class="hidden absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white font-bold ring-4 ring-[#0F1020]">0</span>
+            <button id="tabRequests" data-tab="requests" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 relative group">
+                <i class="fas fa-exchange-alt group-hover:rotate-180 transition-transform duration-500"></i> Central de Trocas
+                
+                <span id="requestsBadge" class="hidden absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-[10px] text-white font-bold ring-4 ring-[#0F1020] shadow-lg animate-bounce">0</span>
             </button>
         </nav>
 
