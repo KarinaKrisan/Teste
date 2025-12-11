@@ -16,7 +16,6 @@ export function initCollabUI() {
 
     if (!userName) {
         if(welcome) welcome.innerHTML = `<span class="text-red-400">Erro: Perfil sem nome. Avise o Admin.</span>`;
-        // Não retorna aqui para não travar o carregamento, mas a aba de trocas vai ficar vazia
     } else {
         if(welcome) {
             welcome.textContent = `Olá, ${userName}`;
@@ -242,7 +241,7 @@ function initRequestsTab() {
         });
     });
 
-    // RECEBIDAS (Onde aparece o botão de aceitar)
+    // RECEBIDAS (Para eu aprovar)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
