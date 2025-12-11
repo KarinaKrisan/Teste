@@ -128,7 +128,6 @@ async function finalizeAction() {
             await updateDoc(reqRef, { status: 'rejected' });
         }
         
-        // Fecha modal e limpa
         document.getElementById('confirmationModal').classList.add('hidden');
         
     } catch (e) {
@@ -235,9 +234,8 @@ async function sendRequest() {
             createdAt: serverTimestamp()
         });
         
-        // --- FECHA MODAL DE FORMULÁRIO E ABRE O DE SUCESSO ---
         document.getElementById('requestModal').classList.add('hidden');
-        document.getElementById('requestSentModal').classList.remove('hidden'); // Exibe o novo modal de sucesso
+        document.getElementById('requestSentModal').classList.remove('hidden'); 
         
         document.getElementById('reqReason').value = '';
         document.getElementById('reqTargetEmployee').value = '';
@@ -294,10 +292,12 @@ function initRequestsTab() {
         });
     });
 
-    // RECEBIDAS
+    // RECEBIDAS + NOTIFICAÇÃO (BADGE)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
+        const badge = document.getElementById('requestsBadge');
+
         if(!list) return;
         list.innerHTML = '';
         let count = 0;
@@ -357,6 +357,16 @@ function initRequestsTab() {
                 </div>`;
             }
         });
+
+        // CONTROLE DA NOTIFICAÇÃO (BADGE)
+        if(badge) {
+            if (count > 0) {
+                badge.textContent = count;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
 
         if (count === 0) list.innerHTML = `
             <div class="flex flex-col items-center justify-center py-8 text-gray-500 opacity-50">
