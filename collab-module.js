@@ -5,7 +5,7 @@ import { updatePersonalView, updateWeekendTable } from './ui.js';
 
 // --- INICIALIZAÇÃO DA UI ---
 export function initCollabUI() {
-    // 1. Limpa UI de Admin (Esconde Toolbar de salvar)
+    // 1. Limpa UI de Admin
     const adminToolbar = document.getElementById('adminToolbar');
     const adminEditHint = document.getElementById('adminEditHint');
     const employeeSelect = document.getElementById('employeeSelectContainer');
@@ -14,11 +14,19 @@ export function initCollabUI() {
     if(adminEditHint) adminEditHint.classList.add('hidden');
     if(employeeSelect) employeeSelect.classList.add('hidden');
     
-    // 2. Mostra Saudação
+    // 2. Mostra Saudação e Verifica Perfil
     const welcome = document.getElementById('welcomeUser');
-    if(welcome && state.profile) {
-        welcome.textContent = `Olá, ${state.profile.name}`;
-        welcome.classList.remove('hidden');
+    
+    // SEGURANÇA: Se não tiver perfil carregado, não tenta renderizar coisas que dependem do nome
+    if (!state.profile || !state.profile.name) {
+        console.error("ERRO: Perfil de colaborador inválido ou sem nome.", state.profile);
+        if(welcome) welcome.textContent = "Olá, Colaborador (Perfil incompleto)";
+        // Não retorna para permitir que o resto da UI carregue, mas avisa no console
+    } else {
+        if(welcome) {
+            welcome.textContent = `Olá, ${state.profile.name}`;
+            welcome.classList.remove('hidden');
+        }
     }
 
     // 3. Configura Abas
@@ -27,11 +35,10 @@ export function initCollabUI() {
     document.getElementById('tabRequests').classList.remove('hidden');
 
     // 4. Carrega dados visuais
-    if(state.profile) {
+    if(state.profile && state.profile.name) {
         updatePersonalView(state.profile.name);
     }
     
-    // Mostra todos os plantões (ou apenas do usuário se preferir passar state.profile.name)
     updateWeekendTable(null); 
     
     // 5. Inicia Listeners
@@ -40,9 +47,7 @@ export function initCollabUI() {
 }
 
 function setupEventListeners() {
-    // Evita duplicar listeners verificando se já existe
     const btnNew = document.getElementById('btnNewRequestDynamic');
-    // Remove listener antigo clonando o nó (truque rápido)
     if(btnNew) {
         const newBtn = btnNew.cloneNode(true);
         btnNew.parentNode.replaceChild(newBtn, btnNew);
@@ -50,7 +55,12 @@ function setupEventListeners() {
     }
 
     const btnSend = document.getElementById('btnSendRequest');
-    if(btnSend) btnSend.onclick = sendRequest;
+    if(btnSend) {
+        // Remove listeners antigos para evitar duplo envio
+        const newBtnSend = btnSend.cloneNode(true);
+        btnSend.parentNode.replaceChild(newBtnSend, btnSend);
+        newBtnSend.onclick = sendRequest;
+    }
 
     const reqType = document.getElementById('reqType');
     if(reqType) {
@@ -63,8 +73,8 @@ function setupEventListeners() {
 
 // --- INTERAÇÃO COM O CALENDÁRIO ---
 export function handleCollabCellClick(name, dayIndex) {
-    if(state.isAdmin) return; // Se for admin, ignora
-    if(name !== state.profile.name) return; // Só abre se for o próprio
+    if(state.isAdmin) return; 
+    if(!state.profile || name !== state.profile.name) return; 
     openRequestModal(dayIndex);
 }
 
@@ -93,7 +103,7 @@ function openManualRequestModal() {
     document.getElementById('reqDateDisplay').classList.add('hidden');
     document.getElementById('reqDateManual').classList.remove('hidden');
     document.getElementById('reqDateIndex').value = ''; 
-    document.getElementById('reqEmployeeName').value = state.profile.name;
+    document.getElementById('reqEmployeeName').value = state.profile ? state.profile.name : '';
     
     setupModalTargetSelect();
     
@@ -110,7 +120,9 @@ function setupModalTargetSelect() {
     
     if(state.scheduleData) {
         Object.keys(state.scheduleData).sort().forEach(n => { 
-            if(n !== state.profile.name) {
+            // Proteção se profile.name for undefined
+            const myName = state.profile ? state.profile.name : '';
+            if(n !== myName) {
                 const opt = document.createElement('option');
                 opt.value = n;
                 opt.textContent = n;
@@ -131,11 +143,12 @@ async function sendRequest() {
         let idx = document.getElementById('reqDateIndex').value;
         let name = document.getElementById('reqEmployeeName').value;
         
+        if(!name) throw new Error("Erro de identificação do usuário. Recarregue a página.");
+
         if(!idx) {
             const manualDate = document.getElementById('reqDateManual').value;
             if(!manualDate) throw new Error("Por favor, selecione uma data.");
             idx = parseInt(manualDate.split('-')[2]) - 1;
-            name = state.profile.name;
         } else {
             idx = parseInt(idx);
         }
@@ -149,8 +162,11 @@ async function sendRequest() {
 
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
 
+        // CORREÇÃO DE FORMATO DO ID (Mesmo do Admin: YYYY-MM)
+        const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+
         await addDoc(collection(db, "solicitacoes"), {
-            monthId: `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`,
+            monthId: docId,
             requester: name,
             dayIndex: idx,
             type: type,
@@ -167,19 +183,25 @@ async function sendRequest() {
         document.getElementById('reqTargetEmployee').value = '';
 
     } catch(e) { 
-        alert(e.message); 
+        alert("Erro: " + e.message); 
     } finally { 
         btn.innerHTML = 'Enviar Solicitação'; 
         btn.disabled = false; 
     }
 }
 
-// --- LISTAGEM DE SOLICITAÇÕES ---
+// --- LISTAGEM DE SOLICITAÇÕES (CORRIGIDA) ---
 function initRequestsTab() {
-    // Usando o formato de ID compatível com o banco
-    const docId = `escala-${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    // 1. SEGURANÇA: Se não tiver nome, não tenta buscar no banco (causa o erro undefined)
+    if (!state.profile || !state.profile.name) {
+        console.warn("Aba de solicitações pausada: Nome do perfil não encontrado.");
+        return;
+    }
+
+    // 2. CORREÇÃO DO ID (YYYY-MM)
+    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // 1. Minhas Solicitações (Enviadas)
+    // 3. Queries
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", state.profile.name));
     
     onSnapshot(qSent, (snap) => {
@@ -188,7 +210,7 @@ function initRequestsTab() {
         list.innerHTML = '';
         
         if (snap.empty) {
-            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Você não tem solicitações.</p>';
+            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Você não tem solicitações enviadas.</p>';
         }
 
         snap.forEach(d => {
@@ -202,12 +224,11 @@ function initRequestsTab() {
                     <div class="text-xs text-gray-400">Dia ${r.dayIndex+1} • ${r.type.replace(/_/g, ' ')}</div>
                     <div class="text-xs text-gray-500 italic">"${r.reason}"</div>
                 </div>
-                <span class="text-[10px] font-bold uppercase ${statusColors[r.status]}">${statusLabels[r.status]}</span>
+                <span class="text-[10px] font-bold uppercase ${statusColors[r.status] || 'text-gray-400'}">${statusLabels[r.status] || r.status}</span>
             </div>`;
         });
     });
 
-    // 2. Solicitações Recebidas
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     
     onSnapshot(qReceived, (snap) => {
@@ -237,7 +258,7 @@ function initRequestsTab() {
         });
 
         if (!hasPending) {
-            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação pendente.</p>';
+            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação recebida.</p>';
         }
     });
 }
