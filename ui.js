@@ -1,7 +1,5 @@
-// ui.js - Lógica visual compartilhada
+// ui.js - Lógica Visual
 import { state, pad, monthNames, availableMonths } from './config.js'; 
-// Removemos a importação circular do admin-module se não for estritamente necessária aqui
-// import * as Admin from './admin-module.js'; 
 
 // --- SELETOR DE MÊS ---
 export function renderMonthSelector(onPrev, onNext) {
@@ -33,24 +31,18 @@ export function renderMonthSelector(onPrev, onNext) {
     if(btnNext && hasNext) btnNext.onclick = onNext;
 }
 
-// --- VISUALIZAÇÃO COMPARTILHADA ---
-
-// 1. Escala Individual (Crachá + Calendário)
+// --- ESCALA INDIVIDUAL ---
 export function updatePersonalView(name) {
-    // Se não tiver dados para esse nome, para aqui
-    if(!name || !state.scheduleData || !state.scheduleData[name]) {
-        console.warn(`updatePersonalView: Sem dados para ${name}`);
-        return;
-    }
+    if(!name || !state.scheduleData || !state.scheduleData[name]) return;
     
     const emp = state.scheduleData[name];
     const info = emp.info || {};
     
-    // --- BLINDAGEM DE CAMPOS ---
-    const role = info.Role || info.role || info.Cargo || info.cargo || 'Colaborador';
-    const cell = info.Célula || info.Celula || info.célula || info.celula || '--';
-    const shift = info.Turno || info.turno || '--';
-    const hours = info.Horário || info.Horario || info.horário || info.horario || '--';
+    // BLINDAGEM DE DADOS (Lê do seu banco exatamente como está na imagem)
+    const role = info.role || info.Role || info.Cargo || 'Colaborador';
+    const cell = info.célula || info.Célula || info.celula || '--';
+    const shift = info.turno || info.Turno || '--';
+    const hours = info.horario || info.Horário || info.Horario || '--';
 
     const card = document.getElementById('personalInfoCard');
     if(card) {
@@ -86,14 +78,13 @@ export function updateCalendar(name, schedule) {
     if(!grid) return;
     
     grid.innerHTML = '';
-    
     const empty = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
     
     if (schedule && Array.isArray(schedule)) {
         schedule.forEach((st, i) => {
             grid.innerHTML += `
-            <div onclick="window.handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group transition-colors">
+            <div onclick="window.handleCellClick('${name}',${i})" class="h-20 bg-[#161828] border border-[#2E3250] p-1 cursor-pointer hover:bg-[#1F2136] relative group">
                 <span class="text-gray-500 text-xs font-bold">${i+1}</span>
                 <div class="mt-2 text-center text-xs font-bold rounded status-${st}">${st}</div>
             </div>`;
@@ -101,15 +92,14 @@ export function updateCalendar(name, schedule) {
     }
 }
 
-// 2. Plantão Fins de Semana
+// --- PLANTÃO FINS DE SEMANA ---
 export function updateWeekendTable(targetName) {
     const container = document.getElementById('weekendPlantaoContainer');
     if(!container) return;
     
     container.innerHTML = '';
-    
     if(!state.scheduleData || Object.keys(state.scheduleData).length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado de escala disponível.</p>';
+        container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado.</p>';
         return;
     }
     
@@ -117,7 +107,7 @@ export function updateWeekendTable(targetName) {
 
     for (let d = 1; d <= totalDays; d++) {
         const date = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, d);
-        if (date.getDay() === 6) { // Sábado
+        if (date.getDay() === 6) { 
             const satIndex = d - 1;
             const sunIndex = d;
             const hasSunday = (d + 1) <= totalDays;
@@ -154,20 +144,14 @@ export function updateWeekendTable(targetName) {
             }
         }
     }
-    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
+    if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão.</p>';
 }
 
-// 3. Controle das Sub-Abas (Trocas)
+// --- SUB-ABAS (Trocas) ---
 export function switchSubTab(type) {
     state.activeRequestType = type;
-
-    const map = {
-        'troca_dia_trabalho': 'subTabWork',
-        'troca_folga': 'subTabOff',
-        'troca_turno': 'subTabShift'
-    };
+    const map = { 'troca_dia_trabalho': 'subTabWork', 'troca_folga': 'subTabOff', 'troca_turno': 'subTabShift' };
     
-    // Reseta visual dos botões
     Object.values(map).forEach(id => {
         const el = document.getElementById(id);
         if(el) {
@@ -176,14 +160,12 @@ export function switchSubTab(type) {
         }
     });
 
-    // Ativa o botão selecionado
     const activeEl = document.getElementById(map[type]);
     if(activeEl) {
         activeEl.classList.add('sub-tab-active', 'text-white');
         activeEl.classList.remove('text-gray-400');
     }
 
-    // Atualiza Texto do Botão Principal
     const btnLabel = document.getElementById('btnNewRequestLabel');
     if(btnLabel) {
         const labels = {
