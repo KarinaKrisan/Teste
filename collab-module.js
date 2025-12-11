@@ -128,6 +128,7 @@ async function finalizeAction() {
             await updateDoc(reqRef, { status: 'rejected' });
         }
         
+        // Fecha modal e limpa
         document.getElementById('confirmationModal').classList.add('hidden');
         
     } catch (e) {
@@ -292,7 +293,7 @@ function initRequestsTab() {
         });
     });
 
-    // RECEBIDAS + NOTIFICAÇÃO (BADGE)
+    // RECEBIDAS + NOTIFICAÇÃO (BADGE ATUALIZADO)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -358,7 +359,7 @@ function initRequestsTab() {
             }
         });
 
-        // CONTROLE DA NOTIFICAÇÃO (BADGE)
+        // --- LÓGICA DO BADGE ---
         if(badge) {
             if (count > 0) {
                 badge.textContent = count;
