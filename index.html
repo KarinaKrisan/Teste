@@ -81,13 +81,11 @@
 
         <main>
             <div id="dailyView" class="tab-content active space-y-6">
-                
                 <div id="adminRequestsPanel" class="hidden cronos-card p-4 rounded-3xl border border-orange-500/30 bg-orange-900/10 mb-6">
                     <h3 class="text-orange-400 font-bold text-sm uppercase mb-4 flex items-center">
                         <i class="fas fa-bell mr-2"></i> Solicitações Pendentes (Líder)
                     </h3>
-                    <div id="adminRequestsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        </div>
+                    <div id="adminRequestsList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
 
                 <section class="cronos-card p-6 rounded-3xl relative overflow-hidden">
@@ -213,6 +211,27 @@
                      Enviar Solicitação
                  </button>
              </div>
+        </div>
+    </div>
+
+    <div id="requestSentModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fade-in">
+        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-500"></div>
+            
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 rounded-full bg-sky-500/10 flex items-center justify-center mx-auto mb-5 border border-sky-500/20 animate-pulse-slow">
+                    <i class="fas fa-paper-plane text-2xl text-sky-400"></i>
+                </div>
+
+                <h3 class="text-xl font-bold text-white mb-2">Solicitação Enviada!</h3>
+                <p class="text-sm text-gray-400 mb-8">
+                    Seu pedido foi encaminhado com sucesso.
+                </p>
+
+                <button onclick="document.getElementById('requestSentModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]">
+                    OK, Entendi
+                </button>
+            </div>
         </div>
     </div>
 
