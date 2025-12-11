@@ -1,4 +1,4 @@
-// main.js - Arquivo Principal
+// main.js
 import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
@@ -6,7 +6,6 @@ import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTab
 import { doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-// ANTI-TRAVAMENTO
 setTimeout(() => {
     const overlay = document.getElementById('appLoadingOverlay');
     if (overlay && !overlay.classList.contains('hidden')) {
@@ -25,12 +24,12 @@ if (ds) ds.addEventListener('input', e => {
 });
 
 onAuthStateChanged(auth, async (user) => {
-    if (!user && !window.location.pathname.includes('start.html')) {
-        window.location.href = "start.html";
+    if (!user) {
+        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) {
+            window.location.href = "start.html";
+        }
         return;
     }
-    if (!user) return;
-
     state.currentUser = user;
     updateMonthSelectorUI();
 
@@ -42,7 +41,7 @@ onAuthStateChanged(auth, async (user) => {
 
         if (state.hasDualRole) {
             state.profile = collabSnap.data();
-            normalizeProfileData();
+            normalizeProfileData(); // Corrige nome
             state.isAdmin = true; 
             await loadData();
             Admin.initAdminUI();
