@@ -1,4 +1,4 @@
-// main.js - Arquivo Principal Blindado
+// main.js - Arquivo Principal
 import { db, auth, state, hideLoader, availableMonths } from './config.js';
 import * as Admin from './admin-module.js';
 import * as Collab from './collab-module.js';
@@ -6,24 +6,17 @@ import { updatePersonalView, switchSubTab, renderMonthSelector, updateWeekendTab
 import { doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-// --- FORÇAR DESTRAVAMENTO (SEGURANÇA) ---
-// Se o sistema travar, isso remove a tela de carregamento após 4 segundos
+// ANTI-TRAVAMENTO
 setTimeout(() => {
     const overlay = document.getElementById('appLoadingOverlay');
     if (overlay && !overlay.classList.contains('hidden')) {
-        console.warn("Sistema demorou a responder. Forçando abertura.");
+        console.warn("Destravando UI...");
         hideLoader();
     }
 }, 4000);
 
-// --- INICIALIZAÇÃO ---
 const btnLogout = document.getElementById('btnLogout');
-if(btnLogout) {
-    btnLogout.addEventListener('click', async () => { 
-        await signOut(auth); 
-        window.location.href = "start.html"; 
-    });
-}
+if(btnLogout) btnLogout.addEventListener('click', async () => { await signOut(auth); window.location.href = "start.html"; });
 
 const ds = document.getElementById('dateSlider');
 if (ds) ds.addEventListener('input', e => { 
@@ -32,12 +25,12 @@ if (ds) ds.addEventListener('input', e => {
 });
 
 onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-        if (!window.location.pathname.includes('start.html') && !window.location.pathname.includes('login-')) {
-            window.location.href = "start.html";
-        }
+    if (!user && !window.location.pathname.includes('start.html')) {
+        window.location.href = "start.html";
         return;
     }
+    if (!user) return;
+
     state.currentUser = user;
     updateMonthSelectorUI();
 
@@ -49,7 +42,7 @@ onAuthStateChanged(auth, async (user) => {
 
         if (state.hasDualRole) {
             state.profile = collabSnap.data();
-            normalizeProfileData(); // Corrige nome/nome
+            normalizeProfileData();
             state.isAdmin = true; 
             await loadData();
             Admin.initAdminUI();
@@ -63,41 +56,31 @@ onAuthStateChanged(auth, async (user) => {
         else if (collabSnap.exists()) {
             state.isAdmin = false;
             state.profile = collabSnap.data();
-            normalizeProfileData(); // Corrige nome/nome
+            normalizeProfileData();
             await loadData(); 
             Collab.initCollabUI(); 
             switchTab('personal');
-        } 
-        else {
-            alert("Acesso negado: Perfil não encontrado.");
+        } else {
+            alert("Acesso Negado.");
         }
         
         if(state.isAdmin) switchTab('daily');
 
     } catch (e) { 
         console.error("Erro Fatal:", e); 
-        // Não alerta para não travar a UI, apenas loga
     } finally { 
         hideLoader(); 
     }
 });
 
-// --- FUNÇÃO PARA CORRIGIR ERROS DE CADASTRO NO BANCO ---
 function normalizeProfileData() {
     if (!state.profile) return;
-    
-    // Se não tem 'name', tenta achar em 'nome' ou 'Nome'
     if (!state.profile.name) {
-        if (state.profile.nome) state.profile.name = state.profile.nome;
-        else if (state.profile.Nome) state.profile.name = state.profile.Nome;
-        else {
-            console.warn("ALERTA CRÍTICO: Perfil sem nome. Usando 'Desconhecido'.");
-            state.profile.name = "Desconhecido"; // Evita crash no 'where'
-        }
+        state.profile.name = state.profile.nome || state.profile.Nome || "Desconhecido";
     }
 }
 
-// --- FUNÇÕES DE NAVEGAÇÃO E DADOS ---
+// --- FUNÇÃO DE TROCA DE MODO ---
 window.toggleUserMode = async () => {
     const overlay = document.getElementById('appLoadingOverlay');
     overlay.classList.remove('hidden', 'opacity-0');
@@ -116,20 +99,17 @@ window.toggleUserMode = async () => {
             normalizeProfileData();
             Collab.initCollabUI();
             switchTab('personal');
-            if(state.profile.name) updatePersonalView(state.profile.name);
+            if(state.profile.name !== "Desconhecido") updatePersonalView(state.profile.name);
         }
         
         updateWeekendTable(null);
         renderSwitchModeButton();
 
     } catch (error) {
-        console.error("Erro troca:", error);
+        console.error(error);
         state.isAdmin = !state.isAdmin; 
     } finally {
-        setTimeout(() => {
-            overlay.classList.add('opacity-0');
-            setTimeout(() => overlay.classList.add('hidden'), 500);
-        }, 500);
+        setTimeout(() => { overlay.classList.add('opacity-0'); setTimeout(() => overlay.classList.add('hidden'), 500); }, 500);
     }
 };
 
@@ -170,10 +150,7 @@ async function handleMonthChange(direction) {
         }
         updateWeekendTable(null);
 
-        setTimeout(() => {
-            overlay.classList.add('opacity-0');
-            setTimeout(() => overlay.classList.add('hidden'), 500);
-        }, 500);
+        setTimeout(() => { overlay.classList.add('opacity-0'); setTimeout(() => overlay.classList.add('hidden'), 500); }, 500);
     }
 }
 
@@ -183,7 +160,6 @@ function updateMonthSelectorUI() {
 
 async function loadData() {
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    
     try {
         const snap = await getDoc(doc(db, "escalas", docId));
         state.rawSchedule = snap.exists() ? snap.data() : {};
@@ -201,10 +177,7 @@ async function loadData() {
             });
         }
         processScheduleData();
-    } catch (e) { 
-        console.error(e); 
-        state.scheduleData = {}; 
-    }
+    } catch (e) { console.error(e); state.scheduleData = {}; }
 }
 
 function processScheduleData() {
@@ -223,19 +196,16 @@ function processScheduleData() {
             
             if (state.employeesCache && state.employeesCache[name]) {
                 userData = { ...state.employeesCache[name], ...userData };
-            } 
-            else if (state.profile && state.profile.name && state.profile.name === name) {
+            } else if (state.profile && state.profile.name && state.profile.name === name) {
                 userData = { ...state.profile, ...userData };
             }
 
             let finalSchedule = [];
             if (userData.calculatedSchedule && Array.isArray(userData.calculatedSchedule)) {
                 finalSchedule = userData.calculatedSchedule;
-            } 
-            else if (userData.schedule && Array.isArray(userData.schedule)) {
+            } else if (userData.schedule && Array.isArray(userData.schedule)) {
                 finalSchedule = userData.schedule;
-            }
-            else {
+            } else {
                 finalSchedule = generateScheduleFromRules(userData, year, month, totalDays);
             }
 
@@ -269,7 +239,6 @@ function generateScheduleFromRules(data, year, month, totalDays) {
     return arr;
 }
 
-// UTILS
 function switchTab(tabName) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
