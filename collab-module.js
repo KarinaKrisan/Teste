@@ -3,8 +3,12 @@ import { db, state, pad } from './config.js';
 import { addDoc, updateDoc, doc, collection, serverTimestamp, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
+// Variáveis para controlar o Modal de Confirmação
+let pendingReqId = null;
+let pendingAction = null;
+
 export function initCollabUI() {
-    // 1. Limpa UI de Admin e ajusta visualização
+    // 1. Limpa UI de Admin
     ['adminToolbar', 'adminEditHint', 'employeeSelectContainer', 'adminRequestsPanel'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.add('hidden');
@@ -30,15 +34,12 @@ export function initCollabUI() {
     if(userName) updatePersonalView(userName);
     updateWeekendTable(null); 
     
-    if (userName) {
-        initRequestsTab(); 
-    }
+    if (userName) initRequestsTab(); 
     
     setupEventListeners();
 }
 
 function setupEventListeners() {
-    // Helper para substituir botões e limpar eventos antigos
     const replaceBtn = (id, fn) => {
         const old = document.getElementById(id);
         if(old) {
@@ -50,12 +51,15 @@ function setupEventListeners() {
 
     replaceBtn('btnNewRequestDynamic', openManualRequestModal);
     replaceBtn('btnSendRequest', sendRequest);
+    
+    // Vincula o botão "Sim, Confirmar" do novo modal à função final
+    const btnConfirm = document.getElementById('btnConfirmAction');
+    if(btnConfirm) btnConfirm.onclick = finalizeAction;
 
     const reqType = document.getElementById('reqType');
     if(reqType) {
         reqType.onchange = (e) => {
             const targetContainer = document.getElementById('swapTargetContainer');
-            // Se for troca de turno, esconde o seletor de colega (pois vai pro líder)
             if (targetContainer) {
                 targetContainer.classList.toggle('hidden', e.target.value === 'troca_turno');
             }
@@ -69,15 +73,82 @@ export function handleCollabCellClick(name, dayIndex) {
     openRequestModal(dayIndex);
 }
 
-// --- MODAIS ---
+// --- ABERTURA DO MODAL DE CONFIRMAÇÃO (UNIFICADO) ---
+window.openConfirmationModal = (reqId, action) => {
+    pendingReqId = reqId;
+    pendingAction = action;
+
+    const modal = document.getElementById('confirmationModal');
+    const topBar = document.getElementById('confirmModalTopBar');
+    const iconBg = document.getElementById('confirmModalIconBg');
+    const icon = document.getElementById('confirmModalIcon');
+    const title = document.getElementById('confirmModalTitle');
+    const text = document.getElementById('confirmModalText');
+    const btn = document.getElementById('btnConfirmAction');
+
+    // Estilização Dinâmica baseada na Ação
+    if (action === 'accept') {
+        // Estilo VERDE (Aceitar)
+        topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500";
+        iconBg.className = "w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-5 border border-green-500/20 animate-pulse-slow";
+        icon.className = "fas fa-check text-2xl text-green-400";
+        title.textContent = "Aceitar Solicitação?";
+        text.textContent = "Você está prestes a aceitar essa troca. O pedido será enviado ao líder.";
+        btn.className = "py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]";
+        btn.textContent = "Sim, Aceitar";
+    } else {
+        // Estilo VERMELHO (Recusar)
+        topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500";
+        iconBg.className = "w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-5 border border-red-500/20 animate-pulse-slow";
+        icon.className = "fas fa-times text-2xl text-red-400";
+        title.textContent = "Recusar Solicitação?";
+        text.textContent = "Tem certeza? Esta ação encerrará a solicitação permanentemente.";
+        btn.className = "py-3 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]";
+        btn.textContent = "Sim, Recusar";
+    }
+
+    modal.classList.remove('hidden');
+};
+
+// --- EXECUÇÃO DA AÇÃO (FIREBASE) ---
+async function finalizeAction() {
+    if (!pendingReqId || !pendingAction) return;
+
+    const btn = document.getElementById('btnConfirmAction');
+    const originalText = btn.textContent;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+    btn.disabled = true;
+
+    try {
+        const reqRef = doc(db, "solicitacoes", pendingReqId);
+        
+        if (pendingAction === 'accept') {
+            await updateDoc(reqRef, { status: 'pending_leader' });
+        } else {
+            await updateDoc(reqRef, { status: 'rejected' });
+        }
+        
+        // Fecha modal e limpa
+        document.getElementById('confirmationModal').classList.add('hidden');
+        
+    } catch (e) {
+        console.error(e);
+        alert("Erro ao processar: " + e.message);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        pendingReqId = null;
+        pendingAction = null;
+    }
+}
+
+// --- MODAIS DE SOLICITAÇÃO (CRIAÇÃO) ---
 function openRequestModal(dayIndex) {
     const d = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, dayIndex + 1);
-    
     document.getElementById('reqDateDisplay').textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
     document.getElementById('reqDateDisplay').classList.remove('hidden');
     document.getElementById('reqDateManual').classList.add('hidden');
     document.getElementById('reqDateIndex').value = dayIndex;
-    
     prepareModalCommon();
 }
 
@@ -85,17 +156,13 @@ function openManualRequestModal() {
     document.getElementById('reqDateDisplay').classList.add('hidden');
     document.getElementById('reqDateManual').classList.remove('hidden');
     document.getElementById('reqDateIndex').value = ''; 
-    
     prepareModalCommon();
 }
 
 function prepareModalCommon() {
     document.getElementById('reqEmployeeName').value = state.profile ? state.profile.name : '';
-    
     const currentType = state.activeRequestType || 'troca_dia_trabalho';
     document.getElementById('reqType').value = currentType;
-    
-    // Configura visibilidade do campo "Colega"
     const targetContainer = document.getElementById('swapTargetContainer');
     const isShiftSwap = (currentType === 'troca_turno');
     
@@ -107,14 +174,12 @@ function prepareModalCommon() {
             setupModalTargetSelect();
         }
     }
-    
     document.getElementById('requestModal').classList.remove('hidden');
 }
 
 function setupModalTargetSelect() {
     const s = document.getElementById('reqTargetEmployee');
     s.innerHTML = '<option value="">Selecione o colega...</option>';
-    
     if(state.scheduleData) {
         const myName = state.profile ? state.profile.name : '';
         Object.keys(state.scheduleData).sort().forEach(n => { 
@@ -128,13 +193,12 @@ function setupModalTargetSelect() {
     }
 }
 
-// --- ENVIO DA SOLICITAÇÃO ---
 async function sendRequest() {
     const btn = document.getElementById('btnSendRequest');
     btn.innerHTML = 'Enviando...'; btn.disabled = true;
 
     try {
-        const type = state.activeRequestType || 'troca_dia_trabalho'; // Pega do estado global
+        const type = state.activeRequestType || 'troca_dia_trabalho'; 
         let idx = document.getElementById('reqDateIndex').value;
         const name = state.profile.name;
 
@@ -151,18 +215,13 @@ async function sendRequest() {
         const reason = document.getElementById('reqReason').value;
         const targetInput = document.getElementById('reqTargetEmployee').value;
         
-        // REGRA DE NEGÓCIO:
         const isShiftSwap = (type === 'troca_turno');
 
         if (!isShiftSwap && !targetInput) throw new Error("Selecione com quem deseja trocar.");
         if (!reason) throw new Error("Informe o motivo.");
 
-        // LÓGICA DE DESTINO
-        // Troca de Turno -> Vai direto para o Líder (pending_leader)
-        // Troca de Dia/Folga -> Vai para o Colega (pending_peer)
         const initialStatus = isShiftSwap ? 'pending_leader' : 'pending_peer';
         const targetUser = isShiftSwap ? 'LÍDER' : targetInput;
-
         const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
 
         await addDoc(collection(db, "solicitacoes"), {
@@ -176,8 +235,10 @@ async function sendRequest() {
             createdAt: serverTimestamp()
         });
         
+        // --- FECHA MODAL DE FORMULÁRIO E ABRE O DE SUCESSO ---
         document.getElementById('requestModal').classList.add('hidden');
-        alert("Solicitação enviada com sucesso!");
+        document.getElementById('requestSentModal').classList.remove('hidden'); // Exibe o novo modal de sucesso
+        
         document.getElementById('reqReason').value = '';
         document.getElementById('reqTargetEmployee').value = '';
 
@@ -188,36 +249,13 @@ async function sendRequest() {
     }
 }
 
-// --- APROVAÇÃO (COLEGA) ---
-window.processCollabRequest = async (reqId, action) => {
-    // Usamos o confirm nativo temporariamente até criarmos um modal customizado se desejar
-    if(!confirm(`Deseja ${action === 'accept' ? 'ACEITAR' : 'RECUSAR'} esta solicitação?`)) return;
-
-    try {
-        const reqRef = doc(db, "solicitacoes", reqId);
-        
-        if (action === 'accept') {
-            // Colega aceitou -> O status muda para 'pending_leader' para o admin ver
-            await updateDoc(reqRef, { status: 'pending_leader' });
-            alert("Você aceitou a troca! Agora a solicitação foi enviada para aprovação do LÍDER.");
-        } else {
-            // Colega recusou -> Status 'rejected' e fim de papo
-            await updateDoc(reqRef, { status: 'rejected' });
-            alert("Solicitação recusada e encerrada.");
-        }
-    } catch (e) {
-        console.error(e);
-        alert("Erro ao processar: " + e.message);
-    }
-};
-
 // --- LISTAGEM DE SOLICITAÇÕES ---
 function initRequestsTab() {
     if (!state.profile || !state.profile.name) return;
 
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // 1. LISTA DE ENVIADAS (Pelo usuário logado)
+    // ENVIADAS
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", state.profile.name));
     onSnapshot(qSent, (snap) => {
         const list = document.getElementById('sentRequestsList');
@@ -256,7 +294,7 @@ function initRequestsTab() {
         });
     });
 
-    // 2. LISTA DE RECEBIDAS (Onde o usuário é o TARGET e precisa aprovar) - DESIGN ATUALIZADO AQUI
+    // RECEBIDAS
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -266,17 +304,13 @@ function initRequestsTab() {
 
         snap.forEach(d => {
             const r = d.data();
-            // Só mostra se estiver esperando APROVAÇÃO DO COLEGA (pending_peer)
             if(r.status === 'pending_peer') {
                 count++;
-                
                 const typePretty = r.type.replace(/_/g, ' ').toUpperCase();
                 
-                // NOVO DESIGN DA NOTIFICAÇÃO
                 list.innerHTML += `
                 <div class="relative bg-gradient-to-br from-[#1A1C2E] to-[#151725] border border-amber-500/30 rounded-2xl p-0 overflow-hidden shadow-lg shadow-amber-900/10 mb-4 group transition-all hover:border-amber-500/50">
                     <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
-                    
                     <div class="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
                     <div class="p-5 pl-6">
@@ -310,11 +344,11 @@ function initRequestsTab() {
                         </div>
 
                         <div class="grid grid-cols-2 gap-3">
-                            <button onclick="window.processCollabRequest('${d.id}','accept')" 
+                            <button onclick="window.openConfirmationModal('${d.id}','accept')" 
                                 class="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-lg shadow-emerald-900/20 hover:scale-[1.02]">
                                 <i class="fas fa-check"></i> ACEITAR
                             </button>
-                            <button onclick="window.processCollabRequest('${d.id}','reject')" 
+                            <button onclick="window.openConfirmationModal('${d.id}','reject')" 
                                 class="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-transparent border border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold text-xs transition-all hover:border-red-500/60">
                                 <i class="fas fa-times"></i> RECUSAR
                             </button>
