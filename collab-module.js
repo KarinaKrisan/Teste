@@ -52,8 +52,15 @@ function setupEventListeners() {
     replaceBtn('btnSendRequest', sendRequest);
 
     const reqType = document.getElementById('reqType');
-    // Monitora a mudança na sub-aba (controlada pelo ui.js via state.activeRequestType)
-    // Vamos adicionar um observer ou apenas garantir que ao abrir o modal leia o estado
+    if(reqType) {
+        reqType.onchange = (e) => {
+            const targetContainer = document.getElementById('swapTargetContainer');
+            // Se for troca de turno, esconde o seletor de colega (pois vai pro líder)
+            if (targetContainer) {
+                targetContainer.classList.toggle('hidden', e.target.value === 'troca_turno');
+            }
+        };
+    }
 }
 
 export function handleCollabCellClick(name, dayIndex) {
@@ -199,7 +206,7 @@ window.processCollabRequest = async (reqId, action) => {
         }
     } catch (e) {
         console.error(e);
-        alert("Erro ao processar: " + e.message);
+        alert("Erro ao processar: " + e.message); // Este alert ajudará a identificar o erro de permissão
     }
 };
 
@@ -222,30 +229,33 @@ function initRequestsTab() {
             const typeDisplay = r.type.replace(/_/g, ' ').toUpperCase();
             
             let stLabel = r.status;
-            let stColor = 'text-gray-400';
+            let stColor = 'text-gray-400 border-gray-700';
             
-            if(r.status === 'pending_peer') { stLabel = 'Aguardando Colega'; stColor = 'text-yellow-500'; }
-            if(r.status === 'pending_leader') { stLabel = 'Aguardando Líder'; stColor = 'text-blue-400'; }
-            if(r.status === 'approved') { stLabel = 'Aprovado'; stColor = 'text-green-400'; }
-            if(r.status === 'rejected') { stLabel = 'Recusado'; stColor = 'text-red-400'; }
+            if(r.status === 'pending_peer') { stLabel = 'Aguardando Colega'; stColor = 'text-amber-400 border-amber-500/50 bg-amber-900/10'; }
+            if(r.status === 'pending_leader') { stLabel = 'Aguardando Líder'; stColor = 'text-blue-400 border-blue-500/50 bg-blue-900/10'; }
+            if(r.status === 'approved') { stLabel = 'Aprovado'; stColor = 'text-emerald-400 border-emerald-500/50 bg-emerald-900/10'; }
+            if(r.status === 'rejected') { stLabel = 'Recusado'; stColor = 'text-red-400 border-red-500/50 bg-red-900/10'; }
 
             const targetDisplay = r.target === 'LÍDER' ? 'Admin/Líder' : r.target;
 
             list.innerHTML += `
-            <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-[#2E3250] flex justify-between items-center">
+            <div class="bg-[#1A1C2E] p-4 mb-3 rounded-xl border border-[#2E3250] flex justify-between items-center shadow-sm">
                 <div>
-                    <div class="text-[10px] text-sky-400 font-bold mb-1">${typeDisplay} • Dia ${r.dayIndex+1}</div>
-                    <div class="text-xs text-gray-300">Para: <span class="text-white font-bold">${targetDisplay}</span></div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-bold text-white bg-white/5 px-2 py-0.5 rounded border border-white/10">Dia ${r.dayIndex+1}</span>
+                        <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">${typeDisplay}</span>
+                    </div>
+                    <div class="text-xs text-gray-300">Para: <span class="text-white font-semibold">${targetDisplay}</span></div>
                     <div class="text-[10px] text-gray-500 italic mt-1">"${r.reason}"</div>
                 </div>
                 <div class="flex flex-col items-end gap-1">
-                    <span class="text-[9px] font-bold uppercase border border-gray-700 px-2 py-1 rounded ${stColor}">${stLabel}</span>
+                    <span class="text-[9px] font-bold uppercase border px-2 py-1 rounded-full ${stColor}">${stLabel}</span>
                 </div>
             </div>`;
         });
     });
 
-    // 2. LISTA DE RECEBIDAS (Onde o usuário é o TARGET e precisa aprovar)
+    // 2. LISTA DE RECEBIDAS (Onde o usuário é o TARGET e precisa aprovar) - DESIGN ATUALIZADO AQUI
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -258,23 +268,65 @@ function initRequestsTab() {
             // Só mostra se estiver esperando APROVAÇÃO DO COLEGA (pending_peer)
             if(r.status === 'pending_peer') {
                 count++;
+                
+                const typePretty = r.type.replace(/_/g, ' ').toUpperCase();
+                
+                // NOVO DESIGN DA NOTIFICAÇÃO
                 list.innerHTML += `
-                <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-yellow-500/30 shadow-lg shadow-yellow-900/10">
-                    <div class="flex justify-between mb-2">
-                        <span class="text-yellow-400 font-bold text-xs uppercase flex items-center gap-2"><i class="fas fa-exclamation-triangle"></i> Requer sua atenção</span>
-                        <span class="text-xs text-white font-mono bg-gray-800 px-2 rounded">Dia ${r.dayIndex+1}</span>
-                    </div>
-                    <div class="text-sm text-white mb-1 font-bold">${r.requester} quer trocar com você.</div>
-                    <div class="text-xs text-gray-400 mb-1">Tipo: ${r.type.replace(/_/g, ' ').toUpperCase()}</div>
-                    <div class="text-xs text-gray-500 italic mb-3 bg-[#161828] p-2 rounded">"${r.reason}"</div>
-                    <div class="flex gap-2">
-                        <button onclick="window.processCollabRequest('${d.id}','accept')" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg text-xs font-bold transition shadow-lg shadow-green-900/20">ACEITAR</button>
-                        <button onclick="window.processCollabRequest('${d.id}','reject')" class="flex-1 bg-[#1A1C2E] border border-red-500/50 text-red-400 hover:bg-red-900/20 py-2 rounded-lg text-xs font-bold transition">RECUSAR</button>
+                <div class="relative bg-gradient-to-br from-[#1A1C2E] to-[#151725] border border-amber-500/30 rounded-2xl p-0 overflow-hidden shadow-lg shadow-amber-900/10 mb-4 group transition-all hover:border-amber-500/50">
+                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
+                    
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+                    <div class="p-5 pl-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="flex items-center gap-2">
+                                <span class="relative flex h-2 w-2">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                </span>
+                                <span class="text-amber-400 text-xs font-bold uppercase tracking-widest">Ação Necessária</span>
+                            </div>
+                            <div class="bg-[#0F1020] border border-white/10 px-3 py-1 rounded-lg text-center min-w-[60px]">
+                                <span class="block text-[9px] text-gray-500 uppercase font-bold">Dia</span>
+                                <span class="block text-lg font-bold text-white leading-none">${r.dayIndex+1}</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h3 class="text-white text-lg font-bold leading-tight mb-1">
+                                <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">${r.requester}</span>
+                            </h3>
+                            <p class="text-xs text-gray-400 flex items-center gap-1">
+                                <i class="fas fa-exchange-alt text-gray-600"></i>
+                                Deseja realizar: <strong class="text-gray-300">${typePretty}</strong>
+                            </p>
+                        </div>
+
+                        <div class="bg-[#0F1020]/50 border border-white/5 rounded-xl p-3 mb-5 relative">
+                            <i class="fas fa-quote-left text-gray-700 absolute top-2 left-2 text-xs"></i>
+                            <p class="text-sm text-gray-300 italic text-center pl-4 pr-2">"${r.reason}"</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="window.processCollabRequest('${d.id}','accept')" 
+                                class="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-lg shadow-emerald-900/20 hover:scale-[1.02]">
+                                <i class="fas fa-check"></i> ACEITAR
+                            </button>
+                            <button onclick="window.processCollabRequest('${d.id}','reject')" 
+                                class="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-transparent border border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold text-xs transition-all hover:border-red-500/60">
+                                <i class="fas fa-times"></i> RECUSAR
+                            </button>
+                        </div>
                     </div>
                 </div>`;
             }
         });
 
-        if (count === 0) list.innerHTML = '<p class="text-center text-gray-500 text-xs py-4">Nenhuma solicitação pendente para você.</p>';
+        if (count === 0) list.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-8 text-gray-500 opacity-50">
+                <i class="fas fa-inbox text-4xl mb-2"></i>
+                <p class="text-xs">Tudo limpo por aqui.</p>
+            </div>`;
     });
 }
