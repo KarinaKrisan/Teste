@@ -6,25 +6,26 @@ import { updatePersonalView, updateWeekendTable } from './ui.js';
 // --- INICIALIZAÇÃO DA UI ---
 export function initCollabUI() {
     // 1. Limpa UI de Admin
-    const adminToolbar = document.getElementById('adminToolbar');
-    const adminEditHint = document.getElementById('adminEditHint');
-    const employeeSelect = document.getElementById('employeeSelectContainer');
-
-    if(adminToolbar) adminToolbar.classList.add('hidden');
-    if(adminEditHint) adminEditHint.classList.add('hidden');
-    if(employeeSelect) employeeSelect.classList.add('hidden');
+    const elementsToHide = ['adminToolbar', 'adminEditHint', 'employeeSelectContainer'];
+    elementsToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.add('hidden');
+    });
     
-    // 2. Mostra Saudação e Verifica Perfil
+    // 2. Verifica se o perfil tem nome
+    const userName = state.profile ? state.profile.name : null;
     const welcome = document.getElementById('welcomeUser');
-    
-    // SEGURANÇA: Se não tiver perfil carregado, não tenta renderizar coisas que dependem do nome
-    if (!state.profile || !state.profile.name) {
-        console.error("ERRO: Perfil de colaborador inválido ou sem nome.", state.profile);
-        if(welcome) welcome.textContent = "Olá, Colaborador (Perfil incompleto)";
-        // Não retorna para permitir que o resto da UI carregue, mas avisa no console
+
+    if (!userName) {
+        console.error("ERRO CRÍTICO: Perfil carregado sem campo 'name'.", state.profile);
+        if(welcome) {
+            welcome.innerHTML = `<span class="text-red-400"><i class="fas fa-exclamation-triangle"></i> Perfil sem nome! Verifique o banco.</span>`;
+            welcome.classList.remove('hidden');
+        }
+        alert("Atenção: Seu cadastro no banco 'colaboradores' não tem o campo 'name'. A escala não pode ser carregada.");
     } else {
         if(welcome) {
-            welcome.textContent = `Olá, ${state.profile.name}`;
+            welcome.textContent = `Olá, ${userName}`;
             welcome.classList.remove('hidden');
         }
     }
@@ -34,9 +35,9 @@ export function initCollabUI() {
     document.getElementById('tabPersonal').classList.remove('hidden');
     document.getElementById('tabRequests').classList.remove('hidden');
 
-    // 4. Carrega dados visuais
-    if(state.profile && state.profile.name) {
-        updatePersonalView(state.profile.name);
+    // 4. Carrega dados visuais (Só se tiver nome)
+    if(userName) {
+        updatePersonalView(userName);
     }
     
     updateWeekendTable(null); 
@@ -47,20 +48,18 @@ export function initCollabUI() {
 }
 
 function setupEventListeners() {
-    const btnNew = document.getElementById('btnNewRequestDynamic');
-    if(btnNew) {
-        const newBtn = btnNew.cloneNode(true);
-        btnNew.parentNode.replaceChild(newBtn, btnNew);
-        newBtn.onclick = openManualRequestModal;
-    }
+    // Clona e substitui para limpar listeners antigos
+    const replaceListener = (id, handler) => {
+        const el = document.getElementById(id);
+        if(el) {
+            const newEl = el.cloneNode(true);
+            el.parentNode.replaceChild(newEl, el);
+            newEl.onclick = handler;
+        }
+    };
 
-    const btnSend = document.getElementById('btnSendRequest');
-    if(btnSend) {
-        // Remove listeners antigos para evitar duplo envio
-        const newBtnSend = btnSend.cloneNode(true);
-        btnSend.parentNode.replaceChild(newBtnSend, btnSend);
-        newBtnSend.onclick = sendRequest;
-    }
+    replaceListener('btnNewRequestDynamic', openManualRequestModal);
+    replaceListener('btnSendRequest', sendRequest);
 
     const reqType = document.getElementById('reqType');
     if(reqType) {
@@ -92,7 +91,6 @@ function openRequestModal(dayIndex) {
     setupModalTargetSelect();
     
     document.getElementById('reqType').value = state.activeRequestType || 'troca_dia_trabalho';
-    
     const isShift = (document.getElementById('reqType').value === 'troca_turno');
     document.getElementById('swapTargetContainer').classList.toggle('hidden', isShift);
 
@@ -119,9 +117,8 @@ function setupModalTargetSelect() {
     s.innerHTML = '<option value="">Selecione o colega...</option>';
     
     if(state.scheduleData) {
+        const myName = state.profile ? state.profile.name : '';
         Object.keys(state.scheduleData).sort().forEach(n => { 
-            // Proteção se profile.name for undefined
-            const myName = state.profile ? state.profile.name : '';
             if(n !== myName) {
                 const opt = document.createElement('option');
                 opt.value = n;
@@ -143,11 +140,11 @@ async function sendRequest() {
         let idx = document.getElementById('reqDateIndex').value;
         let name = document.getElementById('reqEmployeeName').value;
         
-        if(!name) throw new Error("Erro de identificação do usuário. Recarregue a página.");
+        if(!name) throw new Error("Erro de perfil: Nome não identificado.");
 
         if(!idx) {
             const manualDate = document.getElementById('reqDateManual').value;
-            if(!manualDate) throw new Error("Por favor, selecione uma data.");
+            if(!manualDate) throw new Error("Selecione uma data.");
             idx = parseInt(manualDate.split('-')[2]) - 1;
         } else {
             idx = parseInt(idx);
@@ -157,12 +154,10 @@ async function sendRequest() {
         const reason = document.getElementById('reqReason').value;
         const needsPeer = (type !== 'troca_turno'); 
 
-        if(needsPeer && !target) throw new Error("Selecione com quem deseja trocar.");
-        if(!reason) throw new Error("Informe o motivo da solicitação.");
+        if(needsPeer && !target) throw new Error("Selecione com quem trocar.");
+        if(!reason) throw new Error("Informe o motivo.");
 
         const initialStatus = needsPeer ? 'pending_peer' : 'pending_leader';
-
-        // CORREÇÃO DE FORMATO DO ID (Mesmo do Admin: YYYY-MM)
         const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
 
         await addDoc(collection(db, "solicitacoes"), {
@@ -177,8 +172,7 @@ async function sendRequest() {
         });
         
         document.getElementById('requestModal').classList.add('hidden');
-        alert("Solicitação enviada com sucesso!");
-        
+        alert("Solicitação enviada!");
         document.getElementById('reqReason').value = '';
         document.getElementById('reqTargetEmployee').value = '';
 
@@ -190,18 +184,20 @@ async function sendRequest() {
     }
 }
 
-// --- LISTAGEM DE SOLICITAÇÕES (CORRIGIDA) ---
+// --- LISTAGEM DE SOLICITAÇÕES (BLINDADA) ---
 function initRequestsTab() {
-    // 1. SEGURANÇA: Se não tiver nome, não tenta buscar no banco (causa o erro undefined)
+    // BLINDAGEM: Se não tiver nome, para tudo antes de dar erro no Firebase
     if (!state.profile || !state.profile.name) {
-        console.warn("Aba de solicitações pausada: Nome do perfil não encontrado.");
+        const listRec = document.getElementById('receivedRequestsList');
+        const listSent = document.getElementById('sentRequestsList');
+        if(listRec) listRec.innerHTML = '<p class="text-red-500 text-xs text-center py-4">Erro: Perfil sem nome.</p>';
+        if(listSent) listSent.innerHTML = '<p class="text-red-500 text-xs text-center py-4">Erro: Perfil sem nome.</p>';
         return;
     }
 
-    // 2. CORREÇÃO DO ID (YYYY-MM)
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // 3. Queries
+    // 1. Enviadas
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", state.profile.name));
     
     onSnapshot(qSent, (snap) => {
@@ -209,26 +205,25 @@ function initRequestsTab() {
         if(!list) return;
         list.innerHTML = '';
         
-        if (snap.empty) {
-            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Você não tem solicitações enviadas.</p>';
-        }
+        if (snap.empty) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação enviada.</p>';
 
         snap.forEach(d => {
             const r = d.data();
-            const statusLabels = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
-            const statusColors = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
+            const colors = { 'pending_peer': 'text-yellow-500', 'pending_leader': 'text-blue-400', 'approved': 'text-green-400', 'rejected': 'text-red-400' };
+            const statusMap = { 'pending_peer': 'Aguardando Colega', 'pending_leader': 'Aguardando Líder', 'approved': 'Aprovado', 'rejected': 'Recusado' };
             
             list.innerHTML += `
             <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-[#2E3250] flex justify-between items-center">
                 <div>
-                    <div class="text-xs text-gray-400">Dia ${r.dayIndex+1} • ${r.type.replace(/_/g, ' ')}</div>
+                    <div class="text-xs text-gray-400">Dia ${r.dayIndex+1} • ${r.type}</div>
                     <div class="text-xs text-gray-500 italic">"${r.reason}"</div>
                 </div>
-                <span class="text-[10px] font-bold uppercase ${statusColors[r.status] || 'text-gray-400'}">${statusLabels[r.status] || r.status}</span>
+                <span class="text-[10px] font-bold uppercase ${colors[r.status] || 'text-white'}">${statusMap[r.status] || r.status}</span>
             </div>`;
         });
     });
 
+    // 2. Recebidas
     const qReceived = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     
     onSnapshot(qReceived, (snap) => {
@@ -237,7 +232,6 @@ function initRequestsTab() {
         list.innerHTML = '';
 
         let hasPending = false;
-
         snap.forEach(d => {
             const r = d.data();
             if(r.status === 'pending_peer') {
@@ -250,15 +244,13 @@ function initRequestsTab() {
                     </div>
                     <div class="text-xs text-gray-300 italic mb-3">"${r.reason}"</div>
                     <div class="flex gap-2">
-                        <button onclick="window.processCollabRequest('${d.id}','accept')" class="flex-1 bg-green-600/20 text-green-400 border border-green-600/50 py-1.5 rounded text-xs font-bold hover:bg-green-600 hover:text-white transition">Aceitar</button>
-                        <button onclick="window.processCollabRequest('${d.id}','reject')" class="flex-1 bg-red-600/20 text-red-400 border border-red-600/50 py-1.5 rounded text-xs font-bold hover:bg-red-600 hover:text-white transition">Recusar</button>
+                        <button class="flex-1 bg-green-600/20 text-green-400 border border-green-600/50 py-1 rounded text-xs hover:bg-green-600 hover:text-white">Aceitar</button>
+                        <button class="flex-1 bg-red-600/20 text-red-400 border border-red-600/50 py-1 rounded text-xs hover:bg-red-600 hover:text-white">Recusar</button>
                     </div>
                 </div>`;
             }
         });
 
-        if (!hasPending) {
-            list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação recebida.</p>';
-        }
+        if (!hasPending) list.innerHTML = '<p class="text-center text-gray-600 text-sm py-4 italic">Nenhuma solicitação pendente.</p>';
     });
 }
