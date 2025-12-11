@@ -1,6 +1,7 @@
 // ui.js - Lógica visual compartilhada
 import { state, pad, monthNames, availableMonths } from './config.js'; 
-import * as Admin from './admin-module.js';
+// Removemos a importação circular do admin-module se não for estritamente necessária aqui
+// import * as Admin from './admin-module.js'; 
 
 // --- SELETOR DE MÊS ---
 export function renderMonthSelector(onPrev, onNext) {
@@ -10,9 +11,7 @@ export function renderMonthSelector(onPrev, onNext) {
     const currentM = state.selectedMonthObj;
     const label = `${monthNames[currentM.month]} ${currentM.year}`;
     
-    // Encontra o índice no array de meses disponíveis
     const currentIndex = availableMonths.findIndex(x => x.year === currentM.year && x.month === currentM.month);
-    
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < availableMonths.length - 1;
 
@@ -21,11 +20,7 @@ export function renderMonthSelector(onPrev, onNext) {
             <button id="btnMonthPrev" class="w-8 h-8 flex items-center justify-center rounded transition-colors ${hasPrev ? 'hover:bg-[#2E3250] text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}" ${!hasPrev ? 'disabled' : ''}>
                 <i class="fas fa-chevron-left"></i>
             </button>
-            
-            <div class="px-4 text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 min-w-[140px] text-center uppercase tracking-wider">
-                ${label}
-            </div>
-
+            <div class="px-4 text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 min-w-[140px] text-center uppercase tracking-wider">${label}</div>
             <button id="btnMonthNext" class="w-8 h-8 flex items-center justify-center rounded transition-colors ${hasNext ? 'hover:bg-[#2E3250] text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}" ${!hasNext ? 'disabled' : ''}>
                 <i class="fas fa-chevron-right"></i>
             </button>
@@ -34,7 +29,6 @@ export function renderMonthSelector(onPrev, onNext) {
 
     const btnPrev = document.getElementById('btnMonthPrev');
     const btnNext = document.getElementById('btnMonthNext');
-    
     if(btnPrev && hasPrev) btnPrev.onclick = onPrev;
     if(btnNext && hasNext) btnNext.onclick = onNext;
 }
@@ -44,24 +38,20 @@ export function renderMonthSelector(onPrev, onNext) {
 // 1. Escala Individual (Crachá + Calendário)
 export function updatePersonalView(name) {
     // Se não tiver dados para esse nome, para aqui
-    if(!name || !state.scheduleData[name]) return;
+    if(!name || !state.scheduleData || !state.scheduleData[name]) {
+        console.warn(`updatePersonalView: Sem dados para ${name}`);
+        return;
+    }
     
     const emp = state.scheduleData[name];
     const info = emp.info || {};
     
-    // --- BLINDAGEM DE CAMPOS (Lê maiúsculo, minúsculo e sem acento) ---
+    // --- BLINDAGEM DE CAMPOS ---
     const role = info.Role || info.role || info.Cargo || info.cargo || 'Colaborador';
-    
-    // Tenta: Célula, Celula, célula, celula
     const cell = info.Célula || info.Celula || info.célula || info.celula || '--';
-    
-    // Tenta: Turno, turno
     const shift = info.Turno || info.turno || '--';
-    
-    // Tenta: Horário, Horario, horário, horario
     const hours = info.Horário || info.Horario || info.horário || info.horario || '--';
 
-    // Atualiza o Crachá
     const card = document.getElementById('personalInfoCard');
     if(card) {
         card.innerHTML = `
@@ -87,7 +77,6 @@ export function updatePersonalView(name) {
         card.classList.remove('hidden');
     }
     
-    // Atualiza o Calendário
     document.getElementById('calendarContainer').classList.remove('hidden');
     updateCalendar(name, emp.schedule);
 }
@@ -98,11 +87,9 @@ export function updateCalendar(name, schedule) {
     
     grid.innerHTML = '';
     
-    // Calcula espaços vazios no início do mês
     const empty = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, 1).getDay();
     for(let i=0;i<empty;i++) grid.innerHTML+='<div class="h-20 bg-[#1A1C2E] opacity-50"></div>';
     
-    // Renderiza os dias
     if (schedule && Array.isArray(schedule)) {
         schedule.forEach((st, i) => {
             grid.innerHTML += `
@@ -144,7 +131,6 @@ export function updateWeekendTable(targetName) {
                 }
             });
 
-            // Filtro: Se targetName for null, mostra todos. Se tiver nome, mostra só se ele estiver trabalhando.
             const shouldShow = targetName === null ? (satWorkers.length > 0 || sunWorkers.length > 0) : (satWorkers.includes(targetName) || sunWorkers.includes(targetName));
 
             if (shouldShow) {
@@ -181,11 +167,11 @@ export function switchSubTab(type) {
         'troca_turno': 'subTabShift'
     };
     
-    // Reseta todos os botões
+    // Reseta visual dos botões
     Object.values(map).forEach(id => {
         const el = document.getElementById(id);
         if(el) {
-            el.classList.remove('sub-tab-active', 'text-white', 'bg-[#2E3250]');
+            el.classList.remove('sub-tab-active', 'text-white');
             el.classList.add('text-gray-400');
         }
     });
@@ -197,7 +183,7 @@ export function switchSubTab(type) {
         activeEl.classList.remove('text-gray-400');
     }
 
-    // Atualiza Texto do Botão Principal "Nova Solicitação"
+    // Atualiza Texto do Botão Principal
     const btnLabel = document.getElementById('btnNewRequestLabel');
     if(btnLabel) {
         const labels = {
