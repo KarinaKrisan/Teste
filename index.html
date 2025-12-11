@@ -81,6 +81,15 @@
 
         <main>
             <div id="dailyView" class="tab-content active space-y-6">
+                
+                <div id="adminRequestsPanel" class="hidden cronos-card p-4 rounded-3xl border border-orange-500/30 bg-orange-900/10 mb-6">
+                    <h3 class="text-orange-400 font-bold text-sm uppercase mb-4 flex items-center">
+                        <i class="fas fa-bell mr-2"></i> Solicitações Pendentes (Líder)
+                    </h3>
+                    <div id="adminRequestsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        </div>
+                </div>
+
                 <section class="cronos-card p-6 rounded-3xl relative overflow-hidden">
                     <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                         <div><h2 class="text-sm font-bold text-gray-500 uppercase">Status Operacional</h2><span id="currentDateLabel" class="text-2xl font-bold text-white capitalize"></span></div>
@@ -134,7 +143,34 @@
                     <button id="subTabWork" class="flex-1 bg-[#1A1C2E] border border-cronos-border text-gray-400 py-3 px-4 rounded-xl text-sm font-bold transition-all hover:bg-[#2E3250] focus:outline-none sub-tab-active" onclick="window.switchSubTab('troca_dia_trabalho')">
                         <i class="fas fa-calendar-day mr-2"></i> Dias Trabalhados
                     </button>
+                    <button id="subTabOff" class="flex-1 bg-[#1A1C2E] border border-cronos-border text-gray-400 py-3 px-4 rounded-xl text-sm font-bold transition-all hover:bg-[#2E3250] focus:outline-none" onclick="window.switchSubTab('troca_folga')">
+                        <i class="fas fa-umbrella-beach mr-2"></i> Folgas
+                    </button>
+                    <button id="subTabShift" class="flex-1 bg-[#1A1C2E] border border-cronos-border text-gray-400 py-3 px-4 rounded-xl text-sm font-bold transition-all hover:bg-[#2E3250] focus:outline-none" onclick="window.switchSubTab('troca_turno')">
+                        <i class="fas fa-clock mr-2"></i> Turnos
+                    </button>
+                </div>
+
+                <section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="cronos-card p-6 rounded-3xl">
+                        <h3 class="text-xl font-bold text-white mb-4">Nova Solicitação</h3>
+                        <p class="text-sm text-gray-400 mb-6">Selecione o dia na sua escala para iniciar ou use o botão abaixo.</p>
+                        <button id="btnNewRequestDynamic" class="w-full py-4 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold shadow-lg transition-all flex items-center justify-center gap-2">
+                            <i class="fas fa-plus-circle"></i> <span id="btnNewRequestLabel">Solicitar Troca de Dia</span>
+                        </button>
                     </div>
+
+                    <div id="requestsPanel" class="space-y-6 h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase mb-3 sticky top-0 bg-[#0F1020] py-2 z-10">Pendentes de Aprovação (Para mim)</h4>
+                            <div id="receivedRequestsList" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-500 uppercase mb-3 sticky top-0 bg-[#0F1020] py-2 z-10">Minhas Solicitações (Enviadas)</h4>
+                            <div id="sentRequestsList" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </section>
             </div>
         </main>
         
@@ -146,9 +182,37 @@
     <div id="requestModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
              <div class="p-6 space-y-4">
-                 <button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white absolute top-4 right-4"><i class="fas fa-times"></i></button>
-                 <h3 class="text-white font-bold mb-4">Solicitar Alteração</h3>
+                 <div class="flex justify-between items-center mb-2">
+                     <h3 class="text-white font-bold">Solicitar Alteração</h3>
+                     <button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
                  </div>
+                 
+                 <input type="hidden" id="reqEmployeeName">
+                 <input type="hidden" id="reqDateIndex">
+                 <input type="hidden" id="reqType">
+
+                 <div class="bg-[#0F1020] p-3 rounded-xl border border-[#2E3250] text-center">
+                     <p class="text-[10px] text-gray-400 uppercase font-bold">Data Selecionada</p>
+                     <p id="reqDateDisplay" class="text-xl font-bold text-white font-mono hidden">--/--</p>
+                     <input type="date" id="reqDateManual" class="w-full bg-transparent text-white text-center outline-none text-sm mt-1 hidden">
+                 </div>
+
+                 <div id="swapTargetContainer">
+                     <label class="text-xs font-bold text-gray-400 uppercase ml-1">Trocar com quem?</label>
+                     <select id="reqTargetEmployee" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500">
+                         <option value="">Selecione o colega...</option>
+                     </select>
+                 </div>
+
+                 <div>
+                     <label class="text-xs font-bold text-gray-400 uppercase ml-1">Motivo</label>
+                     <textarea id="reqReason" rows="2" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500" placeholder="Ex: Consulta médica..."></textarea>
+                 </div>
+
+                 <button id="btnSendRequest" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold shadow-lg transition-all">
+                     Enviar Solicitação
+                 </button>
+             </div>
         </div>
     </div>
 
