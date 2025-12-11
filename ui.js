@@ -10,14 +10,11 @@ export function renderMonthSelector(onPrev, onNext) {
     const currentM = state.selectedMonthObj;
     const label = `${monthNames[currentM.month]} ${currentM.year}`;
     
-    // Encontra o índice usando o array importado corretamente
     const currentIndex = availableMonths.findIndex(x => x.year === currentM.year && x.month === currentM.month);
     
-    // Define se os botões devem estar habilitados
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < availableMonths.length - 1;
 
-    // HTML do Seletor
     container.innerHTML = `
         <div class="flex items-center bg-[#1A1C2E] border border-[#2E3250] rounded-lg p-1 shadow-lg">
             <button id="btnMonthPrev" class="w-8 h-8 flex items-center justify-center rounded transition-colors ${hasPrev ? 'hover:bg-[#2E3250] text-gray-400 hover:text-white cursor-pointer' : 'text-gray-700 cursor-not-allowed'}" ${!hasPrev ? 'disabled' : ''}>
@@ -34,7 +31,6 @@ export function renderMonthSelector(onPrev, onNext) {
         </div>
     `;
 
-    // Listeners com verificação de existência
     const btnPrev = document.getElementById('btnMonthPrev');
     const btnNext = document.getElementById('btnMonthNext');
     
@@ -49,12 +45,19 @@ export function updatePersonalView(name) {
     if(!name || !state.scheduleData[name]) return;
     const emp = state.scheduleData[name];
     
-    // Fallbacks para dados
+    // --- CORREÇÃO AQUI: Tenta ler todas as variações de nomes de campo ---
     const info = emp.info || {};
-    const role = info.Cargo || 'Colaborador';
-    const cell = info.Célula || info.Celula || '--';
-    const shift = info.Turno || '--';
-    const hours = info.Horário || info.Horario || '--';
+    
+    const role = info.Cargo || info.cargo || 'Colaborador';
+    
+    // Tenta: Célula, Celula, célula, celula
+    const cell = info.Célula || info.Celula || info.célula || info.celula || '--';
+    
+    // Tenta: Turno, turno
+    const shift = info.Turno || info.turno || '--';
+    
+    // Tenta: Horário, Horario, horário, horario
+    const hours = info.Horário || info.Horario || info.horário || info.horario || '--';
 
     const card = document.getElementById('personalInfoCard');
     if(card) {
@@ -109,7 +112,6 @@ export function updateWeekendTable(targetName) {
     
     container.innerHTML = '';
     
-    // Se não houver dados, exibe mensagem e sai para evitar erros
     if(!state.scheduleData || Object.keys(state.scheduleData).length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum dado de escala disponível.</p>';
         return;
@@ -126,7 +128,6 @@ export function updateWeekendTable(targetName) {
             let satWorkers = [], sunWorkers = [];
 
             Object.keys(state.scheduleData).forEach(name => {
-                // Verificação de segurança extra
                 if (state.scheduleData[name] && state.scheduleData[name].schedule) {
                     const s = state.scheduleData[name].schedule;
                     if (s[satIndex] === 'T') satWorkers.push(name);
@@ -160,15 +161,10 @@ export function updateWeekendTable(targetName) {
     if (container.innerHTML === '') container.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full text-center py-4">Nenhum plantão encontrado.</p>';
 }
 
-// 3. Controle das Sub-Abas (Trocas)
+// 3. Controle das Sub-Abas
 export function switchSubTab(type) {
     state.activeRequestType = type;
-
-    const map = {
-        'troca_dia_trabalho': 'subTabWork',
-        'troca_folga': 'subTabOff',
-        'troca_turno': 'subTabShift'
-    };
+    const map = { 'troca_dia_trabalho': 'subTabWork', 'troca_folga': 'subTabOff', 'troca_turno': 'subTabShift' };
     
     Object.values(map).forEach(id => {
         const el = document.getElementById(id);
