@@ -1,6 +1,6 @@
 // admin-module.js
 import { db, state, isWorkingTime, pad, daysOfWeek } from './config.js';
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { doc, setDoc, updateDoc, collection, query, where, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
 export function initAdminUI() {
@@ -9,14 +9,19 @@ export function initAdminUI() {
     
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
+    
+    // Mostra o painel de solicitações do admin
+    const adminReqPanel = document.getElementById('adminRequestsPanel');
+    if(adminReqPanel) adminReqPanel.classList.remove('hidden');
+
     document.body.style.paddingBottom = "120px";
 
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); 
+    document.getElementById('tabRequests').classList.add('hidden'); // Admin não usa a aba "Central de Trocas" convencional
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // SETUP MODAIS
+    // SETUP MODAIS DE EDIÇÃO MANUAL
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
@@ -31,6 +36,7 @@ export function initAdminUI() {
     if(btnCancelSave) btnCancelSave.onclick = closeSaveModal;
 
     populateEmployeeSelect();
+    initAdminRequests(); // Inicia o listener de solicitações
 }
 
 export function populateEmployeeSelect() {
@@ -46,7 +52,6 @@ export function populateEmployeeSelect() {
         opt.textContent = n;
         s.appendChild(opt);
     });
-
     s.onchange = (e) => {
         if(e.target.value) {
             updatePersonalView(e.target.value);
@@ -58,7 +63,175 @@ export function populateEmployeeSelect() {
     };
 }
 
-// --- FUNÇÕES DO MODAL DE EDIÇÃO ---
+// --- GESTÃO DE SOLICITAÇÕES (LÍDER) ---
+function initAdminRequests() {
+    const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+    
+    // O Líder escuta todas as solicitações que estão no status 'pending_leader' para este mês
+    const q = query(
+        collection(db, "solicitacoes"), 
+        where("monthId", "==", docId), 
+        where("status", "==", "pending_leader")
+    );
+
+    onSnapshot(q, (snap) => {
+        const container = document.getElementById('adminRequestsList');
+        const panel = document.getElementById('adminRequestsPanel');
+        
+        if(!container) return;
+        container.innerHTML = '';
+
+        if(snap.empty) {
+            panel.classList.add('hidden'); // Esconde o painel se não tiver nada
+            return;
+        }
+        
+        panel.classList.remove('hidden'); // Mostra se tiver pendências
+
+        snap.forEach(docSnap => {
+            const r = docSnap.data();
+            const reqId = docSnap.id;
+            
+            // Texto descritivo
+            let desc = "";
+            let icon = "";
+            let color = "";
+
+            if (r.type === 'troca_turno') {
+                desc = `<span class="font-bold text-white">${r.requester}</span> solicita <span class="text-blue-400 font-bold">TROCA DE TURNO</span> no dia ${r.dayIndex+1}.`;
+                icon = "fa-clock";
+                color = "border-blue-500/30";
+            } else {
+                desc = `<span class="font-bold text-white">${r.requester}</span> e <span class="font-bold text-white">${r.target}</span> aceitaram trocar <span class="text-orange-400 font-bold">DIA/FOLGA</span> no dia ${r.dayIndex+1}.`;
+                icon = "fa-exchange-alt";
+                color = "border-orange-500/30";
+            }
+
+            container.innerHTML += `
+            <div class="bg-[#1A1C2E] p-4 rounded-xl border ${color} shadow-lg relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-2 opacity-10"><i class="fas ${icon} text-4xl"></i></div>
+                <div class="relative z-10">
+                    <p class="text-xs text-gray-400 uppercase font-bold mb-2">Aprovação Necessária</p>
+                    <p class="text-sm text-gray-300 mb-2 leading-relaxed">${desc}</p>
+                    <p class="text-xs text-gray-500 italic mb-4 bg-black/20 p-2 rounded border border-white/5">Motivo: "${r.reason}"</p>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="window.handleAdminRequest('${reqId}', 'approve')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold py-2 rounded-lg transition shadow-lg shadow-green-900/20">
+                            <i class="fas fa-check mr-1"></i> APROVAR
+                        </button>
+                        <button onclick="window.handleAdminRequest('${reqId}', 'reject')" class="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 text-xs font-bold py-2 rounded-lg transition">
+                            <i class="fas fa-times mr-1"></i> RECUSAR
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        });
+    });
+}
+
+// Torna a função global para ser chamada pelo HTML
+window.handleAdminRequest = async (reqId, action) => {
+    const btnLabel = action === 'approve' ? 'Aprovar' : 'Recusar';
+    if(!confirm(`Confirma ${btnLabel} esta solicitação?`)) return;
+
+    try {
+        const reqRef = doc(db, "solicitacoes", reqId);
+        const reqSnap = await getDoc(reqRef);
+        
+        if (!reqSnap.exists()) { alert("Solicitação não encontrada."); return; }
+        const r = reqSnap.data();
+
+        if (action === 'reject') {
+            await updateDoc(reqRef, { status: 'rejected' });
+            alert("Solicitação recusada.");
+            return;
+        }
+
+        // --- LÓGICA DE APROVAÇÃO (EXECUTAR A TROCA) ---
+        if (action === 'approve') {
+            // 1. Carregar a escala atual do banco para garantir integridade
+            const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
+            const scaleRef = doc(db, "escalas", docId);
+            const scaleSnap = await getDoc(scaleRef);
+            
+            let currentScheduleData = scaleSnap.exists() ? scaleSnap.data() : state.rawSchedule;
+            
+            // Garante estrutura
+            if(!currentScheduleData[r.requester]) currentScheduleData[r.requester] = {};
+            if(!currentScheduleData[r.requester].calculatedSchedule) {
+                // Se não existir array salvo, usa o do state local ou cria vazio (fallback)
+                currentScheduleData[r.requester].calculatedSchedule = state.scheduleData[r.requester]?.schedule || [];
+            }
+
+            const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
+            // Preenchimento de segurança
+            while(currentScheduleData[r.requester].calculatedSchedule.length < totalDays) {
+                currentScheduleData[r.requester].calculatedSchedule.push('F');
+            }
+
+            // Execução baseada no tipo
+            if (r.type === 'troca_turno') {
+                // Troca de turno: Apenas altera status do Requester? 
+                // Geralmente troca de turno mantém 'T' mas muda horário. Como o sistema é por letras (T/F), 
+                // assumiremos que se ele pediu troca, ele vai trabalhar.
+                // Se o sistema precisasse trocar Horário, seria mais complexo.
+                // *Lógica Simplificada*: Garante que está 'T' naquele dia.
+                // Se for pra trocar dia (Ex: era Folga vira T), funciona.
+                // Se era T e continua T (só muda hora), o sistema visual não mostra hora dinâmica por dia ainda.
+                // Vamos inverter o status atual só pra dar feedback visual ou forçar 'T'.
+                
+                // Vamos assumir que troca de turno inverte o status atual (T <-> F) ou define T?
+                // Dado o contexto "Troca de dia", vamos fazer um SWAP simples entre T e F para o usuário.
+                const currentSt = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
+                currentScheduleData[r.requester].calculatedSchedule[r.dayIndex] = (currentSt === 'T') ? 'F' : 'T';
+            
+            } else {
+                // Troca de Dia/Folga entre DOIS usuários
+                if(!currentScheduleData[r.target]) currentScheduleData[r.target] = {};
+                if(!currentScheduleData[r.target].calculatedSchedule) {
+                     currentScheduleData[r.target].calculatedSchedule = state.scheduleData[r.target]?.schedule || [];
+                }
+                while(currentScheduleData[r.target].calculatedSchedule.length < totalDays) {
+                    currentScheduleData[r.target].calculatedSchedule.push('F');
+                }
+
+                // O SWAP REAL
+                const valA = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
+                const valB = currentScheduleData[r.target].calculatedSchedule[r.dayIndex];
+
+                currentScheduleData[r.requester].calculatedSchedule[r.dayIndex] = valB;
+                currentScheduleData[r.target].calculatedSchedule[r.dayIndex] = valA;
+            }
+
+            // 2. Salva a escala modificada
+            await setDoc(scaleRef, currentScheduleData, { merge: true });
+
+            // 3. Atualiza solicitação para Approved
+            await updateDoc(reqRef, { status: 'approved' });
+
+            // 4. Atualiza estado local e UI
+            state.rawSchedule = currentScheduleData;
+            
+            // Recarrega visualização
+            // Hack rápido: simula recarregamento
+            const event = new Event('change');
+            const el = document.getElementById('employeeSelect');
+            if(el) el.dispatchEvent(event);
+
+            // Atualiza visão diária se for o dia atual
+            if (state.currentDay === (r.dayIndex + 1)) renderDailyView();
+
+            alert("Aprovado! A escala foi atualizada automaticamente.");
+        }
+
+    } catch (e) {
+        console.error(e);
+        alert("Erro crítico ao aprovar: " + e.message);
+    }
+};
+
+
+// --- FUNÇÕES DO MODAL DE EDIÇÃO MANUAL (MANTIDAS) ---
 export function handleAdminCellClick(name, dayIndex) {
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
@@ -85,7 +258,6 @@ function confirmAdminEdit() {
     const name = document.getElementById('adminEditName').value;
     const dayIndex = parseInt(document.getElementById('adminEditIndex').value);
     const newStatus = document.getElementById('adminEditInput').value.toUpperCase().trim();
-    
     if (!newStatus) { alert("Digite um status."); return; }
 
     state.rawSchedule[name].calculatedSchedule[dayIndex] = newStatus;
@@ -94,7 +266,7 @@ function confirmAdminEdit() {
     }
 
     updatePersonalView(name);     
-    updateWeekendTable(null);     
+    updateWeekendTable(null);
     if (state.currentDay === (dayIndex + 1)) renderDailyView();
 
     indicateUnsavedChanges();
@@ -114,7 +286,6 @@ function closeSaveModal() {
     document.getElementById('adminSaveModal').classList.add('hidden');
 }
 
-// FUNÇÃO AUXILIAR PARA O MODAL DE SUCESSO
 function openSuccessModal(msg) {
     const modal = document.getElementById('successModal');
     const msgEl = document.getElementById('successMessage');
@@ -127,20 +298,14 @@ function openSuccessModal(msg) {
 async function confirmSaveToCloud() {
     const btnConfirm = document.getElementById('btnSaveConfirm');
     const originalText = btnConfirm.innerHTML;
-    
     btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
     btnConfirm.disabled = true;
 
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
-    
     try {
         await setDoc(doc(db, "escalas", docId), state.rawSchedule, { merge: true });
-        
         closeSaveModal();
-        
-        // CHAMA O NOVO MODAL DE SUCESSO AQUI
         openSuccessModal(`Dados salvos com sucesso em ${docId}`);
-        
         const statusLabel = document.getElementById('saveStatus');
         const btnToolbar = document.getElementById('btnOpenSaveModal');
         
@@ -157,7 +322,7 @@ async function confirmSaveToCloud() {
 
     } catch (e) { 
         console.error("Erro ao salvar:", e);
-        alert("Erro: " + e.message); // Mantém alert para erro crítico
+        alert("Erro: " + e.message); 
     } finally {
         btnConfirm.innerHTML = originalText;
         btnConfirm.disabled = false;
@@ -167,7 +332,6 @@ async function confirmSaveToCloud() {
 function indicateUnsavedChanges() {
     const saveStatus = document.getElementById('saveStatus');
     const btnToolbar = document.getElementById('btnOpenSaveModal');
-    
     if (saveStatus) {
         saveStatus.textContent = "Alteração Pendente";
         saveStatus.classList.add('text-orange-400');
@@ -189,12 +353,11 @@ export function renderDailyView() {
             dateLabel.textContent = `${daysOfWeek[d.getDay()]}, ${pad(state.currentDay)}/${pad(state.selectedMonthObj.month+1)}`;
         }
     }
-    // ... restante da lógica de renderização
     let w=0, o=0, v=0, os=0;
     let lists = { w:'', o:'', v:'', os:'' };
     let vacationPills = '';
     const pillBase = "w-full text-center py-2 rounded-full text-xs font-bold border shadow-sm cursor-default";
-
+    
     if (state.scheduleData) {
         Object.keys(state.scheduleData).forEach(name => {
             const emp = state.scheduleData[name];
@@ -209,17 +372,20 @@ export function renderDailyView() {
                     os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
                 }
             } else if(st.includes('OFF')) {
-                 os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+                 os++;
+                 lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
             } else if(st === 'FE' || st === 'FÉRIAS') {
-                v++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
+                v++;
+                vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
             } else {
-                o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
+                o++;
+                lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
             }
         });
     }
 
     if(document.getElementById('kpiWorking')) {
-        document.getElementById('kpiWorking').textContent = w; 
+        document.getElementById('kpiWorking').textContent = w;
         document.getElementById('kpiOff').textContent = o;
         document.getElementById('kpiVacation').textContent = v; 
         document.getElementById('kpiOffShift').textContent = os;
