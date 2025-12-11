@@ -1,59 +1,46 @@
-// collab-module.js - Versão Estável
+// collab-module.js
 import { db, state, pad } from './config.js';
 import { addDoc, updateDoc, doc, collection, serverTimestamp, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
 export function initCollabUI() {
-    // 1. Esconde elementos exclusivos de Admin
+    // 1. Limpa UI de Admin
     ['adminToolbar', 'adminEditHint', 'employeeSelectContainer'].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.add('hidden');
     });
     
-    // 2. Validação de Perfil e Nome
-    // Garante que userName nunca seja undefined
+    // 2. Verifica se o perfil tem nome válido
     const userName = (state.profile && state.profile.name) ? state.profile.name : null;
-    
     const welcome = document.getElementById('welcomeUser');
-    if(welcome) {
-        if (userName) {
+
+    if (!userName) {
+        if(welcome) welcome.innerHTML = `<span class="text-red-400">Erro: Perfil sem nome. Avise o Admin.</span>`;
+        // Não retorna aqui para não travar o carregamento, mas a aba de trocas vai ficar vazia
+    } else {
+        if(welcome) {
             welcome.textContent = `Olá, ${userName}`;
-            welcome.classList.remove('hidden');
-        } else {
-            // Fallback visual se não tiver nome
-            welcome.innerHTML = `<span class="text-red-400 text-xs">Perfil incompleto (sem nome)</span>`;
             welcome.classList.remove('hidden');
         }
     }
 
-    // 3. Configuração de Abas
-    const tabDaily = document.getElementById('tabDaily');
-    const tabPersonal = document.getElementById('tabPersonal');
-    const tabRequests = document.getElementById('tabRequests');
+    // 3. Mostra as Abas corretas
+    document.getElementById('tabDaily').classList.add('hidden');
+    document.getElementById('tabPersonal').classList.remove('hidden');
+    document.getElementById('tabRequests').classList.remove('hidden');
 
-    if(tabDaily) tabDaily.classList.add('hidden');
-    if(tabPersonal) tabPersonal.classList.remove('hidden');
-    if(tabRequests) tabRequests.classList.remove('hidden');
-
-    // 4. Renderização de Dados
-    if(userName) {
-        updatePersonalView(userName);
-    }
+    if(userName) updatePersonalView(userName);
     updateWeekendTable(null); 
     
-    // 5. Inicialização de Listeners e Consultas
-    // Só inicia as consultas se tiver um nome válido para evitar o erro "Unsupported field value: undefined"
+    // 4. Só inicia busca no banco se tiver nome, para evitar o erro "invalid data"
     if (userName) {
         initRequestsTab(); 
-    } else {
-        console.warn("initRequestsTab ignorado: Usuário sem nome definido.");
     }
     
     setupEventListeners();
 }
 
 function setupEventListeners() {
-    // Helper para substituir botões e limpar eventos antigos
     const replaceBtn = (id, fn) => {
         const old = document.getElementById(id);
         if(old) {
@@ -69,19 +56,23 @@ function setupEventListeners() {
     const reqType = document.getElementById('reqType');
     if(reqType) {
         reqType.onchange = (e) => {
-            const isShift = e.target.value === 'troca_turno';
-            const targetContainer = document.getElementById('swapTargetContainer');
-            if(targetContainer) {
-                targetContainer.classList.toggle('hidden', isShift);
-            }
+            toggleTargetSelect(e.target.value);
         };
+    }
+}
+
+function toggleTargetSelect(type) {
+    const targetContainer = document.getElementById('swapTargetContainer');
+    const isShiftSwap = (type === 'troca_turno');
+    // Se for turno, esconde o campo de colega (vai pro líder)
+    if (targetContainer) {
+        targetContainer.classList.toggle('hidden', isShiftSwap);
     }
 }
 
 export function handleCollabCellClick(name, dayIndex) {
     if(state.isAdmin) return; 
-    // Só permite clique se for o próprio usuário
-    if(!state.profile || !state.profile.name || name !== state.profile.name) return; 
+    if(!state.profile || name !== state.profile.name) return; 
     openRequestModal(dayIndex);
 }
 
@@ -89,52 +80,36 @@ export function handleCollabCellClick(name, dayIndex) {
 function openRequestModal(dayIndex) {
     const d = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, dayIndex + 1);
     
-    const disp = document.getElementById('reqDateDisplay');
-    const manual = document.getElementById('reqDateManual');
-    const idx = document.getElementById('reqDateIndex');
-
-    if(disp) {
-        disp.textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
-        disp.classList.remove('hidden');
-    }
-    if(manual) manual.classList.add('hidden');
-    if(idx) idx.value = dayIndex;
+    document.getElementById('reqDateDisplay').textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
+    document.getElementById('reqDateDisplay').classList.remove('hidden');
+    document.getElementById('reqDateManual').classList.add('hidden');
+    document.getElementById('reqDateIndex').value = dayIndex;
     
     prepareModalCommon();
 }
 
 function openManualRequestModal() {
-    const disp = document.getElementById('reqDateDisplay');
-    const manual = document.getElementById('reqDateManual');
-    const idx = document.getElementById('reqDateIndex');
-
-    if(disp) disp.classList.add('hidden');
-    if(manual) manual.classList.remove('hidden');
-    if(idx) idx.value = ''; 
+    document.getElementById('reqDateDisplay').classList.add('hidden');
+    document.getElementById('reqDateManual').classList.remove('hidden');
+    document.getElementById('reqDateIndex').value = ''; 
     
     prepareModalCommon();
 }
 
 function prepareModalCommon() {
-    const empName = document.getElementById('reqEmployeeName');
-    if(empName) empName.value = state.profile.name || '';
+    document.getElementById('reqEmployeeName').value = state.profile ? state.profile.name : '';
     
     const currentType = state.activeRequestType || 'troca_dia_trabalho';
-    const typeSelect = document.getElementById('reqType');
-    if(typeSelect) typeSelect.value = currentType;
+    document.getElementById('reqType').value = currentType;
     
-    const isShift = (currentType === 'troca_turno');
-    const targetContainer = document.getElementById('swapTargetContainer');
-    if(targetContainer) targetContainer.classList.toggle('hidden', isShift);
-    
+    toggleTargetSelect(currentType);
     setupModalTargetSelect();
+    
     document.getElementById('requestModal').classList.remove('hidden');
 }
 
 function setupModalTargetSelect() {
     const s = document.getElementById('reqTargetEmployee');
-    if(!s) return;
-    
     s.innerHTML = '<option value="">Selecione o colega...</option>';
     
     if(state.scheduleData) {
@@ -158,9 +133,9 @@ async function sendRequest() {
     try {
         const type = document.getElementById('reqType').value;
         let idx = document.getElementById('reqDateIndex').value;
-        let name = state.profile.name;
+        const name = state.profile.name;
 
-        if(!name) throw new Error("Erro de perfil: Nome não identificado.");
+        if(!name) throw new Error("Erro: Perfil sem nome.");
 
         if(!idx) {
             const manualDate = document.getElementById('reqDateManual').value;
@@ -172,15 +147,17 @@ async function sendRequest() {
 
         const reason = document.getElementById('reqReason').value;
         const targetInput = document.getElementById('reqTargetEmployee').value;
+        
+        // REGRA DE NEGÓCIO:
         const isShiftSwap = (type === 'troca_turno');
 
-        if (!isShiftSwap && !targetInput) throw new Error("Selecione o colega com quem deseja trocar.");
-        if (!reason) throw new Error("Informe o motivo da solicitação.");
+        if (!isShiftSwap && !targetInput) throw new Error("Selecione com quem deseja trocar.");
+        if (!reason) throw new Error("Informe o motivo.");
 
-        // Define status e alvo baseado no tipo
+        // Se for Turno -> pending_leader. Se for Dia/Folga -> pending_peer
         const initialStatus = isShiftSwap ? 'pending_leader' : 'pending_peer';
         const targetUser = isShiftSwap ? 'LÍDER' : targetInput;
-        
+
         const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
 
         await addDoc(collection(db, "solicitacoes"), {
@@ -195,9 +172,7 @@ async function sendRequest() {
         });
         
         document.getElementById('requestModal').classList.add('hidden');
-        alert("Solicitação enviada com sucesso!");
-        
-        // Limpa campos
+        alert("Solicitação enviada!");
         document.getElementById('reqReason').value = '';
         document.getElementById('reqTargetEmployee').value = '';
 
@@ -208,7 +183,7 @@ async function sendRequest() {
     }
 }
 
-// --- AÇÃO DO COLEGA (ACEITAR/RECUSAR) ---
+// --- APROVAÇÃO (COLEGA) ---
 window.processCollabRequest = async (reqId, action) => {
     if(!confirm(`Deseja ${action === 'accept' ? 'ACEITAR' : 'RECUSAR'} esta troca?`)) return;
 
@@ -216,11 +191,12 @@ window.processCollabRequest = async (reqId, action) => {
         const reqRef = doc(db, "solicitacoes", reqId);
         
         if (action === 'accept') {
+            // Colega aceitou -> Vai para o líder
             await updateDoc(reqRef, { status: 'pending_leader' });
-            alert("Você aceitou! A solicitação foi encaminhada para aprovação final do líder.");
+            alert("Aceito! Encaminhado para o líder.");
         } else {
             await updateDoc(reqRef, { status: 'rejected' });
-            alert("Solicitação recusada.");
+            alert("Recusado.");
         }
     } catch (e) {
         console.error(e);
@@ -228,28 +204,26 @@ window.processCollabRequest = async (reqId, action) => {
     }
 };
 
-// --- LISTAGEM DE SOLICITAÇÕES ---
+// --- LISTAGEM ---
 function initRequestsTab() {
-    // Dupla checagem de segurança
     if (!state.profile || !state.profile.name) return;
 
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // 1. Minhas Solicitações (Enviadas)
+    // ENVIADAS
     const qSent = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("requester", "==", state.profile.name));
-    
     onSnapshot(qSent, (snap) => {
         const list = document.getElementById('sentRequestsList');
         if(!list) return;
         list.innerHTML = '';
-        
-        if(snap.empty) {
-            list.innerHTML = '<p class="text-center text-gray-500 text-xs py-2">Nenhuma solicitação enviada.</p>';
-        }
+        if(snap.empty) list.innerHTML = '<p class="text-gray-500 text-xs text-center py-2">Nenhuma solicitação enviada.</p>';
 
         snap.forEach(d => {
             const r = d.data();
-            let stLabel = 'Pendente'; let stColor = 'text-gray-400';
+            const typeDisplay = r.type.replace(/_/g, ' ').toUpperCase();
+            
+            let stLabel = r.status;
+            let stColor = 'text-gray-400';
             
             if(r.status === 'pending_peer') { stLabel = 'Aguardando Colega'; stColor = 'text-yellow-500'; }
             if(r.status === 'pending_leader') { stLabel = 'Aguardando Líder'; stColor = 'text-blue-400'; }
@@ -259,8 +233,8 @@ function initRequestsTab() {
             list.innerHTML += `
             <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-[#2E3250] flex justify-between items-center">
                 <div>
-                    <div class="text-[10px] text-sky-400 font-bold mb-1">${r.type.toUpperCase()} • Dia ${r.dayIndex+1}</div>
-                    <div class="text-xs text-gray-300">Para: <span class="text-white font-bold">${r.target}</span></div>
+                    <div class="text-[10px] text-sky-400 font-bold mb-1">${typeDisplay} • Dia ${r.dayIndex+1}</div>
+                    <div class="text-xs text-gray-300">Para: <span class="text-white">${r.target}</span></div>
                     <div class="text-[10px] text-gray-500 italic">"${r.reason}"</div>
                 </div>
                 <span class="text-[9px] font-bold uppercase border border-gray-700 px-2 py-1 rounded ${stColor}">${stLabel}</span>
@@ -268,27 +242,26 @@ function initRequestsTab() {
         });
     });
 
-    // 2. Solicitações Recebidas (Para eu aprovar)
+    // RECEBIDAS (Onde aparece o botão de aceitar)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
-    
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
         if(!list) return;
         list.innerHTML = '';
-
         let count = 0;
+
         snap.forEach(d => {
             const r = d.data();
-            // Mostra apenas se estiver esperando ação do colega (eu)
+            // Só mostra se for para MIM e estiver esperando APROVAÇÃO (pending_peer)
             if(r.status === 'pending_peer') {
                 count++;
                 list.innerHTML += `
                 <div class="bg-[#0F1020] p-3 mb-2 rounded-lg border border-yellow-500/30">
                     <div class="flex justify-between mb-2">
-                        <span class="text-yellow-500 font-bold text-xs uppercase">De: ${r.requester}</span>
+                        <span class="text-yellow-500 font-bold text-xs uppercase">Solicitação de ${r.requester}</span>
                         <span class="text-xs text-gray-400">Dia ${r.dayIndex+1}</span>
                     </div>
-                    <div class="text-xs text-white mb-1">Tipo: ${r.type.toUpperCase()}</div>
+                    <div class="text-xs text-white mb-1">Tipo: ${r.type.replace(/_/g, ' ')}</div>
                     <div class="text-xs text-gray-400 italic mb-3">"${r.reason}"</div>
                     <div class="flex gap-2">
                         <button onclick="window.processCollabRequest('${d.id}','accept')" class="flex-1 bg-green-600/20 text-green-400 border border-green-600/50 py-1.5 rounded text-xs font-bold hover:bg-green-600 hover:text-white transition">Aceitar</button>
@@ -298,8 +271,6 @@ function initRequestsTab() {
             }
         });
 
-        if (count === 0) {
-            list.innerHTML = '<p class="text-center text-gray-500 text-xs py-2">Nenhuma solicitação pendente.</p>';
-        }
+        if (count === 0) list.innerHTML = '<p class="text-center text-gray-500 text-xs py-2">Nenhuma pendente.</p>';
     });
 }
