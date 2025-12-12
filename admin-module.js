@@ -17,10 +17,14 @@ export function initAdminUI() {
 
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); 
-    document.getElementById('tabAdminRequests').classList.remove('hidden');
+    
+    // GESTÃO DE VISIBILIDADE DAS ABAS
+    document.getElementById('tabRequests').classList.add('hidden'); // Esconde aba do colaborador
+    document.getElementById('tabAdminRequests').classList.remove('hidden'); // Mostra aba do admin
+
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
+    // SETUP MODAIS E BOTÕES
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
@@ -217,7 +221,7 @@ async function finalizeAdminAction() {
     }
 }
 
-// --- FUNÇÕES DE EDIÇÃO MANUAL ---
+// ... (Restante das funções: handleAdminCellClick, confirmAdminEdit, save, renderDailyView mantidas como estavam)
 export function handleAdminCellClick(name, dayIndex) {
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
@@ -284,7 +288,6 @@ function indicateUnsavedChanges() {
     if (btnToolbar) { btnToolbar.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i> Salvar Agora'; btnToolbar.classList.replace('bg-indigo-600', 'bg-orange-600'); btnToolbar.classList.replace('hover:bg-indigo-500', 'hover:bg-orange-500'); }
 }
 
-// --- VISÃO DIÁRIA CORRIGIDA PARA LER 'horario' ---
 export function renderDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     if(dateLabel) {
@@ -303,35 +306,27 @@ export function renderDailyView() {
             const emp = state.scheduleData[name];
             if (!emp || !emp.schedule) return;
             const st = emp.schedule[state.currentDay-1] || 'F';
-            
             if(st === 'T') {
-                // CORREÇÃO AQUI: Verifica 'horario' (minúsculo) além dos outros
                 const hours = (emp.info && (emp.info.horario || emp.info.Horario || emp.info.Horário)) || '';
-                
                 if (isWorkingTime(hours)) {
                     w++; lists.w += `<div class="${pillBase} bg-green-900/30 text-green-400 border-green-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">T</span></div>`;
                 } else {
                     os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
                 }
             } else if(st.includes('OFF')) {
-                 os++;
-                 lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
+                 os++; lists.os += `<div class="${pillBase} bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">EXP</span></div>`;
             } else if(st === 'FE' || st === 'FÉRIAS') {
-                v++;
-                vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
+                v++; vacationPills += `<div class="${pillBase} bg-red-900/30 text-red-400 border-red-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">FÉRIAS</span></div>`;
             } else {
-                o++;
-                lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
+                o++; lists.o += `<div class="${pillBase} bg-yellow-900/30 text-yellow-500 border-yellow-500/30 flex justify-between px-4"><span class="flex-1">${name}</span> <span class="bg-black/20 px-2 rounded">F</span></div>`;
             }
         });
     }
-
     if(document.getElementById('kpiWorking')) {
         document.getElementById('kpiWorking').textContent = w;
         document.getElementById('kpiOff').textContent = o;
         document.getElementById('kpiVacation').textContent = v; 
         document.getElementById('kpiOffShift').textContent = os;
-        
         document.getElementById('listWorking').innerHTML = lists.w;
         document.getElementById('listOffShift').innerHTML = lists.os;
         document.getElementById('listOff').innerHTML = lists.o;
