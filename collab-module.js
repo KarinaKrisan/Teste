@@ -292,7 +292,7 @@ function initRequestsTab() {
         });
     });
 
-    // RECEBIDAS + NOVO DESIGN DO CARD (ESTILO MODAL)
+    // RECEBIDAS + NOVO DESIGN DO CARD (CLEAN & MINIMALISTA)
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -308,42 +308,38 @@ function initRequestsTab() {
                 count++;
                 const typePretty = r.type.replace(/_/g, ' ').toUpperCase();
                 
-                // --- NOVO DESIGN: ESTILO "MODAL" (FAIXA SUPERIOR E BOTÕES CHEIOS) ---
+                // --- DESIGN CLEAN ---
                 list.innerHTML += `
-                <div class="relative bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-xl overflow-hidden mb-5">
-                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 to-orange-500"></div>
+                <div class="relative bg-[#1A1C2E] border border-white/5 rounded-xl shadow-lg transition-all hover:border-white/10 overflow-hidden">
+                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
 
-                    <div class="p-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <div class="flex items-center gap-2 text-amber-500 animate-pulse">
-                                <i class="fas fa-exclamation-circle text-sm"></i>
-                                <span class="text-xs font-bold uppercase tracking-widest">Ação Necessária</span>
-                            </div>
-                            <div class="bg-[#0F1020] border border-white/10 px-3 py-1 rounded-lg text-center">
-                                <span class="block text-[10px] text-gray-500 uppercase font-bold">Dia</span>
-                                <span class="block text-xl font-bold text-white">${r.dayIndex+1}</span>
+                    <div class="p-5 pl-6">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Ação Necessária
+                            </span>
+                            <div class="bg-black/30 border border-white/10 px-2 py-1 rounded text-center">
+                                <span class="text-[9px] font-bold text-gray-400 block uppercase">Dia</span>
+                                <span class="text-sm font-bold text-white block leading-none">${r.dayIndex+1}</span>
                             </div>
                         </div>
 
-                        <div class="mb-5">
-                            <h3 class="text-white text-lg font-bold mb-1">${r.requester}</h3>
-                            <p class="text-xs text-gray-400 flex items-center gap-1">
-                                <i class="fas fa-exchange-alt"></i> Deseja realizar: <strong class="text-gray-300">${typePretty}</strong>
-                            </p>
+                        <div class="mb-4">
+                            <h3 class="text-white text-base font-bold mb-0.5">${r.requester}</h3>
+                            <p class="text-xs text-gray-400">Solicita: <strong class="text-gray-300">${typePretty}</strong></p>
                         </div>
 
-                        <div class="bg-[#0F1020] border border-white/5 rounded-xl p-4 mb-6 relative">
-                            <i class="fas fa-quote-left text-gray-700 absolute top-3 left-3 text-xs"></i>
-                            <p class="text-sm text-gray-300 italic text-center px-4">"${r.reason}"</p>
+                        <div class="bg-black/20 border border-white/5 rounded-lg p-3 mb-4">
+                            <p class="text-xs text-gray-400 italic">"${r.reason}"</p>
                         </div>
 
                         <div class="flex gap-3">
                             <button onclick="window.openConfirmationModal('${d.id}','accept')" 
-                                class="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2">
+                                class="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg shadow-emerald-900/10 flex items-center justify-center gap-2">
                                 <i class="fas fa-check"></i> ACEITAR
                             </button>
                             <button onclick="window.openConfirmationModal('${d.id}','reject')" 
-                                class="flex-1 py-3 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-sm transition-all hover:border-red-500/60 flex items-center justify-center gap-2">
+                                class="flex-1 py-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-xs transition-colors flex items-center justify-center gap-2">
                                 <i class="fas fa-times"></i> RECUSAR
                             </button>
                         </div>
@@ -363,8 +359,8 @@ function initRequestsTab() {
 
         if (count === 0) list.innerHTML = `
             <div class="flex flex-col items-center justify-center py-10 text-gray-500 opacity-50">
-                <i class="fas fa-check-double text-4xl mb-3"></i>
-                <p class="text-xs font-bold uppercase">Tudo em dia!</p>
+                <i class="fas fa-check-circle text-4xl mb-3"></i>
+                <p class="text-xs font-bold uppercase">Tudo limpo!</p>
             </div>`;
     });
 }
