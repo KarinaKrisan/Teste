@@ -8,8 +8,15 @@ let pendingReqId = null;
 let pendingAction = null;
 
 export function initCollabUI() {
-    // 1. Limpa UI de Admin
-    ['adminToolbar', 'adminEditHint', 'employeeSelectContainer', 'adminRequestsPanel'].forEach(id => {
+    // 1. Limpa UI de Admin e ajusta visualização (CORREÇÃO AQUI: Adicionado tabAdminRequests e adminRequestsView)
+    [
+        'adminToolbar', 
+        'adminEditHint', 
+        'employeeSelectContainer', 
+        'adminRequestsPanel', 
+        'tabAdminRequests', 
+        'adminRequestsView'
+    ].forEach(id => {
         const el = document.getElementById(id);
         if(el) el.classList.add('hidden');
     });
@@ -26,15 +33,20 @@ export function initCollabUI() {
         }
     }
 
-    // Mostra as abas corretas
-    document.getElementById('tabDaily').classList.add('hidden');
+    // 2. Configura as abas do Colaborador
+    document.getElementById('tabDaily').classList.add('hidden'); // Colaborador não vê visão diária global
     document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.remove('hidden');
+    document.getElementById('tabRequests').classList.remove('hidden'); // Garante que a aba do colaborador apareça
 
+    // Força a seleção da aba pessoal inicialmente
+    // (Opcional: simula clique na aba pessoal para garantir view correta)
+    
     if(userName) updatePersonalView(userName);
     updateWeekendTable(null); 
     
-    if (userName) initRequestsTab(); 
+    if (userName) {
+        initRequestsTab(); 
+    }
     
     setupEventListeners();
 }
@@ -52,7 +64,6 @@ function setupEventListeners() {
     replaceBtn('btnNewRequestDynamic', openManualRequestModal);
     replaceBtn('btnSendRequest', sendRequest);
     
-    // Vincula o botão "Sim, Confirmar" do novo modal à função final
     const btnConfirm = document.getElementById('btnConfirmAction');
     if(btnConfirm) btnConfirm.onclick = finalizeAction;
 
@@ -73,7 +84,7 @@ export function handleCollabCellClick(name, dayIndex) {
     openRequestModal(dayIndex);
 }
 
-// --- ABERTURA DO MODAL DE CONFIRMAÇÃO (UNIFICADO) ---
+// --- ABERTURA DO MODAL DE CONFIRMAÇÃO ---
 window.openConfirmationModal = (reqId, action) => {
     pendingReqId = reqId;
     pendingAction = action;
@@ -86,9 +97,7 @@ window.openConfirmationModal = (reqId, action) => {
     const text = document.getElementById('confirmModalText');
     const btn = document.getElementById('btnConfirmAction');
 
-    // Estilização Dinâmica baseada na Ação
     if (action === 'accept') {
-        // Estilo VERDE (Aceitar)
         topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500";
         iconBg.className = "w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-5 border border-green-500/20 animate-pulse-slow";
         icon.className = "fas fa-check text-2xl text-green-400";
@@ -97,7 +106,6 @@ window.openConfirmationModal = (reqId, action) => {
         btn.className = "py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]";
         btn.textContent = "Sim, Aceitar";
     } else {
-        // Estilo VERMELHO (Recusar)
         topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500";
         iconBg.className = "w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-5 border border-red-500/20 animate-pulse-slow";
         icon.className = "fas fa-times text-2xl text-red-400";
@@ -110,7 +118,6 @@ window.openConfirmationModal = (reqId, action) => {
     modal.classList.remove('hidden');
 };
 
-// --- EXECUÇÃO DA AÇÃO (FIREBASE) ---
 async function finalizeAction() {
     if (!pendingReqId || !pendingAction) return;
 
@@ -141,7 +148,7 @@ async function finalizeAction() {
     }
 }
 
-// --- MODAIS DE SOLICITAÇÃO (CRIAÇÃO) ---
+// --- MODAIS DE CRIAÇÃO ---
 function openRequestModal(dayIndex) {
     const d = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month, dayIndex + 1);
     document.getElementById('reqDateDisplay').textContent = `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
@@ -292,7 +299,7 @@ function initRequestsTab() {
         });
     });
 
-    // RECEBIDAS + NOVO DESIGN DO CARD (CLEAN & MINIMALISTA)
+    // RECEBIDAS
     const qRec = query(collection(db, "solicitacoes"), where("monthId", "==", docId), where("target", "==", state.profile.name));
     onSnapshot(qRec, (snap) => {
         const list = document.getElementById('receivedRequestsList');
@@ -308,40 +315,19 @@ function initRequestsTab() {
                 count++;
                 const typePretty = r.type.replace(/_/g, ' ').toUpperCase();
                 
-                // --- DESIGN CLEAN ---
                 list.innerHTML += `
                 <div class="relative bg-[#1A1C2E] border border-white/5 rounded-xl shadow-lg transition-all hover:border-white/10 overflow-hidden">
                     <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
-
                     <div class="p-5 pl-6">
                         <div class="flex justify-between items-center mb-3">
-                            <span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
-                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Ação Necessária
-                            </span>
-                            <div class="bg-black/30 border border-white/10 px-2 py-1 rounded text-center">
-                                <span class="text-[9px] font-bold text-gray-400 block uppercase">Dia</span>
-                                <span class="text-sm font-bold text-white block leading-none">${r.dayIndex+1}</span>
-                            </div>
+                            <span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Ação Necessária</span>
+                            <div class="bg-black/30 border border-white/10 px-2 py-1 rounded text-center"><span class="text-[9px] font-bold text-gray-400 block uppercase">Dia</span><span class="text-sm font-bold text-white block leading-none">${r.dayIndex+1}</span></div>
                         </div>
-
-                        <div class="mb-4">
-                            <h3 class="text-white text-base font-bold mb-0.5">${r.requester}</h3>
-                            <p class="text-xs text-gray-400">Solicita: <strong class="text-gray-300">${typePretty}</strong></p>
-                        </div>
-
-                        <div class="bg-black/20 border border-white/5 rounded-lg p-3 mb-4">
-                            <p class="text-xs text-gray-400 italic">"${r.reason}"</p>
-                        </div>
-
+                        <div class="mb-4"><h3 class="text-white text-base font-bold mb-0.5">${r.requester}</h3><p class="text-xs text-gray-400">Solicita: <strong class="text-gray-300">${typePretty}</strong></p></div>
+                        <div class="bg-black/20 border border-white/5 rounded-lg p-3 mb-4"><p class="text-xs text-gray-400 italic">"${r.reason}"</p></div>
                         <div class="flex gap-3">
-                            <button onclick="window.openConfirmationModal('${d.id}','accept')" 
-                                class="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg shadow-emerald-900/10 flex items-center justify-center gap-2">
-                                <i class="fas fa-check"></i> ACEITAR
-                            </button>
-                            <button onclick="window.openConfirmationModal('${d.id}','reject')" 
-                                class="flex-1 py-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-xs transition-colors flex items-center justify-center gap-2">
-                                <i class="fas fa-times"></i> RECUSAR
-                            </button>
+                            <button onclick="window.openConfirmationModal('${d.id}','accept')" class="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg shadow-emerald-900/10 flex items-center justify-center gap-2"><i class="fas fa-check"></i> ACEITAR</button>
+                            <button onclick="window.openConfirmationModal('${d.id}','reject')" class="flex-1 py-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-xs transition-colors flex items-center justify-center gap-2"><i class="fas fa-times"></i> RECUSAR</button>
                         </div>
                     </div>
                 </div>`;
@@ -357,10 +343,6 @@ function initRequestsTab() {
             }
         }
 
-        if (count === 0) list.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-10 text-gray-500 opacity-50">
-                <i class="fas fa-check-circle text-4xl mb-3"></i>
-                <p class="text-xs font-bold uppercase">Tudo limpo!</p>
-            </div>`;
+        if (count === 0) list.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-gray-500 opacity-50"><i class="fas fa-check-circle text-4xl mb-3"></i><p class="text-xs font-bold uppercase">Tudo limpo!</p></div>`;
     });
 }
