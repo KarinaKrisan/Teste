@@ -79,15 +79,12 @@ function normalizeProfileData() {
     }
 }
 
-// --- FUNÇÃO DE TROCA DE MODO ---
 window.toggleUserMode = async () => {
     const overlay = document.getElementById('appLoadingOverlay');
     overlay.classList.remove('hidden', 'opacity-0');
 
     try {
         state.isAdmin = !state.isAdmin;
-        
-        // Recarrega dados para garantir frescor na troca
         await loadData();
 
         if (state.isAdmin) {
@@ -185,16 +182,12 @@ function processScheduleData() {
     const month = state.selectedMonthObj.month;
     const totalDays = new Date(year, month+1, 0).getDate();
     
-    // --- CORREÇÃO DA DATA ATUAL ---
-    // Verifica se o mês selecionado é o mês real atual
     const today = new Date();
     const isCurrentRealMonth = (year === today.getFullYear() && month === today.getMonth());
 
     if (isCurrentRealMonth) {
-        // Se for o mês atual, FORÇA o dia para hoje
         state.currentDay = today.getDate();
     } else {
-        // Se for outro mês (navegando no histórico/futuro), começa no dia 1
         state.currentDay = 1;
     }
 
@@ -204,7 +197,6 @@ function processScheduleData() {
         slider.value = state.currentDay; 
     }
 
-    // Processamento dos dados
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(rawName => {
             let userData = state.rawSchedule[rawName]; 
@@ -234,8 +226,6 @@ function processScheduleData() {
         });
     }
 
-    // --- FORÇA A RENDERIZAÇÃO DA VISÃO DIÁRIA ---
-    // Isso garante que o Label da Data e os KPIs sejam atualizados imediatamente
     if (state.isAdmin) {
         Admin.renderDailyView();
     }
