@@ -9,19 +9,19 @@ export function initAdminUI() {
     
     if(toolbar) toolbar.classList.remove('hidden');
     if(hint) hint.classList.remove('hidden');
-    
-    // Mostra o painel de solicitações do admin
-    const adminReqPanel = document.getElementById('adminRequestsPanel');
-    if(adminReqPanel) adminReqPanel.classList.remove('hidden');
-
     document.body.style.paddingBottom = "120px";
 
+    // GESTÃO DE ABAS DO ADMIN
     document.getElementById('tabDaily').classList.remove('hidden');
     document.getElementById('tabPersonal').classList.remove('hidden');
-    document.getElementById('tabRequests').classList.add('hidden'); // Admin não usa a aba "Central de Trocas" convencional
+    
+    // Esconde aba de Colaborador e mostra aba de Admin
+    document.getElementById('tabRequests').classList.add('hidden'); 
+    document.getElementById('tabAdminRequests').classList.remove('hidden');
+
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // SETUP MODAIS DE EDIÇÃO MANUAL
+    // SETUP MODAIS
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
@@ -36,7 +36,7 @@ export function initAdminUI() {
     if(btnCancelSave) btnCancelSave.onclick = closeSaveModal;
 
     populateEmployeeSelect();
-    initAdminRequests(); // Inicia o listener de solicitações
+    initAdminRequests(); 
 }
 
 export function populateEmployeeSelect() {
@@ -67,7 +67,7 @@ export function populateEmployeeSelect() {
 function initAdminRequests() {
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // O Líder escuta todas as solicitações que estão no status 'pending_leader' para este mês
+    // O Líder escuta todas as solicitações que estão no status 'pending_leader'
     const q = query(
         collection(db, "solicitacoes"), 
         where("monthId", "==", docId), 
@@ -76,51 +76,80 @@ function initAdminRequests() {
 
     onSnapshot(q, (snap) => {
         const container = document.getElementById('adminRequestsList');
-        const panel = document.getElementById('adminRequestsPanel');
+        const badge = document.getElementById('adminRequestsBadge');
         
         if(!container) return;
         container.innerHTML = '';
 
+        // Atualiza Badge
+        if (badge) {
+            if (!snap.empty) {
+                badge.textContent = snap.size;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
         if(snap.empty) {
-            panel.classList.add('hidden'); // Esconde o painel se não tiver nada
+            container.innerHTML = `
+            <div class="col-span-full flex flex-col items-center justify-center py-12 text-gray-500 opacity-50">
+                <i class="fas fa-check-circle text-5xl mb-4"></i>
+                <p class="text-sm font-bold uppercase tracking-widest">Nenhuma pendência</p>
+            </div>`;
             return;
         }
         
-        panel.classList.remove('hidden'); // Mostra se tiver pendências
-
         snap.forEach(docSnap => {
             const r = docSnap.data();
             const reqId = docSnap.id;
             
             // Texto descritivo
-            let desc = "";
-            let icon = "";
-            let color = "";
-
+            let headerTitle = "";
+            let description = "";
+            
             if (r.type === 'troca_turno') {
-                desc = `<span class="font-bold text-white">${r.requester}</span> solicita <span class="text-blue-400 font-bold">TROCA DE TURNO</span> no dia ${r.dayIndex+1}.`;
-                icon = "fa-clock";
-                color = "border-blue-500/30";
+                headerTitle = "Troca de Turno";
+                description = `<strong class="text-white">${r.requester}</strong> deseja alterar seu turno.`;
             } else {
-                desc = `<span class="font-bold text-white">${r.requester}</span> e <span class="font-bold text-white">${r.target}</span> aceitaram trocar <span class="text-orange-400 font-bold">DIA/FOLGA</span> no dia ${r.dayIndex+1}.`;
-                icon = "fa-exchange-alt";
-                color = "border-orange-500/30";
+                headerTitle = "Troca de Dia/Folga";
+                description = `<strong class="text-white">${r.requester}</strong> e <strong class="text-white">${r.target}</strong> aceitaram a troca.`;
             }
 
+            // Renderiza o Card "Clean" para Admin
             container.innerHTML += `
-            <div class="bg-[#1A1C2E] p-4 rounded-xl border ${color} shadow-lg relative overflow-hidden group">
-                <div class="absolute top-0 right-0 p-2 opacity-10"><i class="fas ${icon} text-4xl"></i></div>
-                <div class="relative z-10">
-                    <p class="text-xs text-gray-400 uppercase font-bold mb-2">Aprovação Necessária</p>
-                    <p class="text-sm text-gray-300 mb-2 leading-relaxed">${desc}</p>
-                    <p class="text-xs text-gray-500 italic mb-4 bg-black/20 p-2 rounded border border-white/5">Motivo: "${r.reason}"</p>
-                    
-                    <div class="grid grid-cols-2 gap-3">
-                        <button onclick="window.handleAdminRequest('${reqId}', 'approve')" class="bg-green-600 hover:bg-green-500 text-white text-xs font-bold py-2 rounded-lg transition shadow-lg shadow-green-900/20">
-                            <i class="fas fa-check mr-1"></i> APROVAR
+            <div class="relative bg-[#1A1C2E] border border-white/5 rounded-xl shadow-xl overflow-hidden transition-all hover:border-amber-500/30 group">
+                <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
+
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Pendente
+                        </span>
+                        <div class="bg-black/30 border border-white/10 px-3 py-1 rounded text-center">
+                            <span class="text-[9px] font-bold text-gray-400 block uppercase">Dia</span>
+                            <span class="text-lg font-bold text-white block leading-none">${r.dayIndex+1}</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-5">
+                        <h3 class="text-white text-base font-bold mb-1">${headerTitle}</h3>
+                        <p class="text-xs text-gray-400 leading-relaxed">${description}</p>
+                    </div>
+
+                    <div class="bg-black/20 border border-white/5 rounded-lg p-3 mb-6 relative">
+                        <i class="fas fa-quote-left text-gray-700 absolute top-2 left-2 text-[10px]"></i>
+                        <p class="text-xs text-gray-400 italic text-center px-2">"${r.reason}"</p>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="window.handleAdminRequest('${reqId}', 'approve')" 
+                            class="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg shadow-emerald-900/10 flex items-center justify-center gap-2">
+                            <i class="fas fa-check"></i> APROVAR
                         </button>
-                        <button onclick="window.handleAdminRequest('${reqId}', 'reject')" class="bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 text-xs font-bold py-2 rounded-lg transition">
-                            <i class="fas fa-times mr-1"></i> RECUSAR
+                        <button onclick="window.handleAdminRequest('${reqId}', 'reject')" 
+                            class="flex-1 py-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-xs transition-colors flex items-center justify-center gap-2">
+                            <i class="fas fa-times"></i> RECUSAR
                         </button>
                     </div>
                 </div>
@@ -131,6 +160,11 @@ function initAdminRequests() {
 
 // Torna a função global para ser chamada pelo HTML
 window.handleAdminRequest = async (reqId, action) => {
+    // Aqui usamos o mesmo modal visual se você quiser, ou um confirm simples. 
+    // Para consistência rápida, vou usar o confirm nativo no admin por enquanto, 
+    // ou podemos implementar o openConfirmationModal também para admin se desejar.
+    // Pelo pedido anterior, vamos manter simples/funcional aqui:
+    
     const btnLabel = action === 'approve' ? 'Aprovar' : 'Recusar';
     if(!confirm(`Confirma ${btnLabel} esta solicitação?`)) return;
 
@@ -149,44 +183,29 @@ window.handleAdminRequest = async (reqId, action) => {
 
         // --- LÓGICA DE APROVAÇÃO (EXECUTAR A TROCA) ---
         if (action === 'approve') {
-            // 1. Carregar a escala atual do banco para garantir integridade
             const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
             const scaleRef = doc(db, "escalas", docId);
             const scaleSnap = await getDoc(scaleRef);
             
             let currentScheduleData = scaleSnap.exists() ? scaleSnap.data() : state.rawSchedule;
             
-            // Garante estrutura
+            // Garante estrutura Requester
             if(!currentScheduleData[r.requester]) currentScheduleData[r.requester] = {};
             if(!currentScheduleData[r.requester].calculatedSchedule) {
-                // Se não existir array salvo, usa o do state local ou cria vazio (fallback)
                 currentScheduleData[r.requester].calculatedSchedule = state.scheduleData[r.requester]?.schedule || [];
             }
 
             const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
-            // Preenchimento de segurança
             while(currentScheduleData[r.requester].calculatedSchedule.length < totalDays) {
                 currentScheduleData[r.requester].calculatedSchedule.push('F');
             }
 
             // Execução baseada no tipo
             if (r.type === 'troca_turno') {
-                // Troca de turno: Apenas altera status do Requester? 
-                // Geralmente troca de turno mantém 'T' mas muda horário. Como o sistema é por letras (T/F), 
-                // assumiremos que se ele pediu troca, ele vai trabalhar.
-                // Se o sistema precisasse trocar Horário, seria mais complexo.
-                // *Lógica Simplificada*: Garante que está 'T' naquele dia.
-                // Se for pra trocar dia (Ex: era Folga vira T), funciona.
-                // Se era T e continua T (só muda hora), o sistema visual não mostra hora dinâmica por dia ainda.
-                // Vamos inverter o status atual só pra dar feedback visual ou forçar 'T'.
-                
-                // Vamos assumir que troca de turno inverte o status atual (T <-> F) ou define T?
-                // Dado o contexto "Troca de dia", vamos fazer um SWAP simples entre T e F para o usuário.
                 const currentSt = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
                 currentScheduleData[r.requester].calculatedSchedule[r.dayIndex] = (currentSt === 'T') ? 'F' : 'T';
-            
             } else {
-                // Troca de Dia/Folga entre DOIS usuários
+                // Garante estrutura Target
                 if(!currentScheduleData[r.target]) currentScheduleData[r.target] = {};
                 if(!currentScheduleData[r.target].calculatedSchedule) {
                      currentScheduleData[r.target].calculatedSchedule = state.scheduleData[r.target]?.schedule || [];
@@ -195,7 +214,7 @@ window.handleAdminRequest = async (reqId, action) => {
                     currentScheduleData[r.target].calculatedSchedule.push('F');
                 }
 
-                // O SWAP REAL
+                // SWAP
                 const valA = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
                 const valB = currentScheduleData[r.target].calculatedSchedule[r.dayIndex];
 
@@ -203,22 +222,15 @@ window.handleAdminRequest = async (reqId, action) => {
                 currentScheduleData[r.target].calculatedSchedule[r.dayIndex] = valA;
             }
 
-            // 2. Salva a escala modificada
+            // Salva
             await setDoc(scaleRef, currentScheduleData, { merge: true });
-
-            // 3. Atualiza solicitação para Approved
             await updateDoc(reqRef, { status: 'approved' });
 
-            // 4. Atualiza estado local e UI
+            // Atualiza estado local
             state.rawSchedule = currentScheduleData;
-            
-            // Recarrega visualização
-            // Hack rápido: simula recarregamento
             const event = new Event('change');
             const el = document.getElementById('employeeSelect');
             if(el) el.dispatchEvent(event);
-
-            // Atualiza visão diária se for o dia atual
             if (state.currentDay === (r.dayIndex + 1)) renderDailyView();
 
             alert("Aprovado! A escala foi atualizada automaticamente.");
@@ -231,7 +243,7 @@ window.handleAdminRequest = async (reqId, action) => {
 };
 
 
-// --- FUNÇÕES DO MODAL DE EDIÇÃO MANUAL (MANTIDAS) ---
+// --- FUNÇÕES DO MODAL DE EDIÇÃO MANUAL ---
 export function handleAdminCellClick(name, dayIndex) {
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
