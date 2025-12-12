@@ -41,7 +41,7 @@ onAuthStateChanged(auth, async (user) => {
 
         if (state.hasDualRole) {
             state.profile = collabSnap.data();
-            normalizeProfileData(); // Corrige nome
+            normalizeProfileData(); 
             state.isAdmin = true; 
             await loadData();
             Admin.initAdminUI();
@@ -86,12 +86,13 @@ window.toggleUserMode = async () => {
 
     try {
         state.isAdmin = !state.isAdmin;
-        processScheduleData(); 
+        
+        // Recarrega dados para garantir frescor na troca
+        await loadData();
 
         if (state.isAdmin) {
             Admin.initAdminUI();
             switchTab('daily');
-            Admin.renderDailyView();
             const sel = document.getElementById('employeeSelect');
             if(sel && sel.value) updatePersonalView(sel.value);
         } else {
@@ -140,7 +141,6 @@ async function handleMonthChange(direction) {
         await loadData();
 
         if (state.isAdmin) {
-            Admin.renderDailyView();
             const sel = document.getElementById('employeeSelect');
             if(sel && sel.value) updatePersonalView(sel.value);
         } else {
@@ -185,9 +185,26 @@ function processScheduleData() {
     const month = state.selectedMonthObj.month;
     const totalDays = new Date(year, month+1, 0).getDate();
     
-    const slider = document.getElementById('dateSlider');
-    if (slider) { slider.max = totalDays; slider.value = state.currentDay; }
+    // --- CORREÇÃO DA DATA ATUAL ---
+    // Verifica se o mês selecionado é o mês real atual
+    const today = new Date();
+    const isCurrentRealMonth = (year === today.getFullYear() && month === today.getMonth());
 
+    if (isCurrentRealMonth) {
+        // Se for o mês atual, FORÇA o dia para hoje
+        state.currentDay = today.getDate();
+    } else {
+        // Se for outro mês (navegando no histórico/futuro), começa no dia 1
+        state.currentDay = 1;
+    }
+
+    const slider = document.getElementById('dateSlider');
+    if (slider) { 
+        slider.max = totalDays; 
+        slider.value = state.currentDay; 
+    }
+
+    // Processamento dos dados
     if(state.rawSchedule) {
         Object.keys(state.rawSchedule).forEach(rawName => {
             let userData = state.rawSchedule[rawName]; 
@@ -215,6 +232,12 @@ function processScheduleData() {
 
             state.scheduleData[name] = { info: userData, schedule: finalSchedule };
         });
+    }
+
+    // --- FORÇA A RENDERIZAÇÃO DA VISÃO DIÁRIA ---
+    // Isso garante que o Label da Data e os KPIs sejam atualizados imediatamente
+    if (state.isAdmin) {
+        Admin.renderDailyView();
     }
 }
 
