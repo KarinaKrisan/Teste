@@ -3,6 +3,10 @@ import { db, state, isWorkingTime, pad, daysOfWeek } from './config.js';
 import { doc, setDoc, updateDoc, collection, query, where, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { updatePersonalView, updateWeekendTable } from './ui.js';
 
+// Variáveis para controlar o Modal de Ação do Admin
+let pendingAdminReqId = null;
+let pendingAdminAction = null;
+
 export function initAdminUI() {
     const toolbar = document.getElementById('adminToolbar');
     const hint = document.getElementById('adminEditHint');
@@ -21,7 +25,7 @@ export function initAdminUI() {
 
     document.getElementById('employeeSelectContainer').classList.remove('hidden');
 
-    // SETUP MODAIS
+    // SETUP MODAIS DE EDIÇÃO
     const btnConfirmEdit = document.getElementById('btnAdminConfirm');
     const btnCancelEdit = document.getElementById('btnAdminCancel');
     if(btnConfirmEdit) btnConfirmEdit.onclick = confirmAdminEdit;
@@ -34,6 +38,10 @@ export function initAdminUI() {
     if(btnOpenSave) btnOpenSave.onclick = openSaveModal;
     if(btnConfirmSave) btnConfirmSave.onclick = confirmSaveToCloud;
     if(btnCancelSave) btnCancelSave.onclick = closeSaveModal;
+
+    // SETUP MODAL DE CONFIRMAÇÃO DO ADMIN (NOVO)
+    const btnAdminExec = document.getElementById('btnAdminExecAction');
+    if(btnAdminExec) btnAdminExec.onclick = finalizeAdminAction;
 
     populateEmployeeSelect();
     initAdminRequests(); 
@@ -67,7 +75,6 @@ export function populateEmployeeSelect() {
 function initAdminRequests() {
     const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
     
-    // O Líder escuta todas as solicitações que estão no status 'pending_leader'
     const q = query(
         collection(db, "solicitacoes"), 
         where("monthId", "==", docId), 
@@ -81,7 +88,6 @@ function initAdminRequests() {
         if(!container) return;
         container.innerHTML = '';
 
-        // Atualiza Badge
         if (badge) {
             if (!snap.empty) {
                 badge.textContent = snap.size;
@@ -104,7 +110,6 @@ function initAdminRequests() {
             const r = docSnap.data();
             const reqId = docSnap.id;
             
-            // Texto descritivo
             let headerTitle = "";
             let description = "";
             
@@ -116,11 +121,9 @@ function initAdminRequests() {
                 description = `<strong class="text-white">${r.requester}</strong> e <strong class="text-white">${r.target}</strong> aceitaram a troca.`;
             }
 
-            // Renderiza o Card "Clean" para Admin
             container.innerHTML += `
             <div class="relative bg-[#1A1C2E] border border-white/5 rounded-xl shadow-xl overflow-hidden transition-all hover:border-amber-500/30 group">
                 <div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
-
                 <div class="p-6">
                     <div class="flex justify-between items-center mb-4">
                         <span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
@@ -131,23 +134,20 @@ function initAdminRequests() {
                             <span class="text-lg font-bold text-white block leading-none">${r.dayIndex+1}</span>
                         </div>
                     </div>
-
                     <div class="mb-5">
                         <h3 class="text-white text-base font-bold mb-1">${headerTitle}</h3>
                         <p class="text-xs text-gray-400 leading-relaxed">${description}</p>
                     </div>
-
                     <div class="bg-black/20 border border-white/5 rounded-lg p-3 mb-6 relative">
                         <i class="fas fa-quote-left text-gray-700 absolute top-2 left-2 text-[10px]"></i>
                         <p class="text-xs text-gray-400 italic text-center px-2">"${r.reason}"</p>
                     </div>
-
                     <div class="flex gap-3">
-                        <button onclick="window.handleAdminRequest('${reqId}', 'approve')" 
+                        <button onclick="window.openAdminActionModal('${reqId}', 'approve')" 
                             class="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow-lg shadow-emerald-900/10 flex items-center justify-center gap-2">
                             <i class="fas fa-check"></i> APROVAR
                         </button>
-                        <button onclick="window.handleAdminRequest('${reqId}', 'reject')" 
+                        <button onclick="window.openAdminActionModal('${reqId}', 'reject')" 
                             class="flex-1 py-2.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/10 font-bold text-xs transition-colors flex items-center justify-center gap-2">
                             <i class="fas fa-times"></i> RECUSAR
                         </button>
@@ -158,54 +158,82 @@ function initAdminRequests() {
     });
 }
 
-// Torna a função global para ser chamada pelo HTML
-window.handleAdminRequest = async (reqId, action) => {
-    // Aqui usamos o mesmo modal visual se você quiser, ou um confirm simples. 
-    // Para consistência rápida, vou usar o confirm nativo no admin por enquanto, 
-    // ou podemos implementar o openConfirmationModal também para admin se desejar.
-    // Pelo pedido anterior, vamos manter simples/funcional aqui:
-    
-    const btnLabel = action === 'approve' ? 'Aprovar' : 'Recusar';
-    if(!confirm(`Confirma ${btnLabel} esta solicitação?`)) return;
+// --- FUNÇÕES DO MODAL DE AÇÃO ADMIN ---
+window.openAdminActionModal = (reqId, action) => {
+    pendingAdminReqId = reqId;
+    pendingAdminAction = action;
+
+    const modal = document.getElementById('adminActionModal');
+    const topBar = document.getElementById('adminModalTopBar');
+    const iconBg = document.getElementById('adminModalIconBg');
+    const icon = document.getElementById('adminModalIcon');
+    const title = document.getElementById('adminModalTitle');
+    const text = document.getElementById('adminModalText');
+    const btn = document.getElementById('btnAdminExecAction');
+
+    if (action === 'approve') {
+        // Estilo Verde (Aprovar)
+        topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-400 via-green-500 to-teal-500";
+        iconBg.className = "w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-5 border border-emerald-500/20 animate-pulse-slow";
+        icon.className = "fas fa-check-circle text-3xl text-emerald-400";
+        title.textContent = "Aprovar Troca?";
+        text.textContent = "A escala será atualizada automaticamente e os colaboradores notificados.";
+        btn.className = "py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]";
+        btn.textContent = "Sim, Aprovar";
+    } else {
+        // Estilo Vermelho (Recusar)
+        topBar.className = "absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500";
+        iconBg.className = "w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-5 border border-red-500/20 animate-pulse-slow";
+        icon.className = "fas fa-times-circle text-3xl text-red-400";
+        title.textContent = "Recusar Solicitação?";
+        text.textContent = "Esta ação é irreversível. A solicitação será cancelada.";
+        btn.className = "py-3 rounded-xl bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]";
+        btn.textContent = "Sim, Recusar";
+    }
+
+    modal.classList.remove('hidden');
+};
+
+async function finalizeAdminAction() {
+    if (!pendingAdminReqId || !pendingAdminAction) return;
+
+    const btn = document.getElementById('btnAdminExecAction');
+    const originalText = btn.textContent;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+    btn.disabled = true;
 
     try {
-        const reqRef = doc(db, "solicitacoes", reqId);
-        const reqSnap = await getDoc(reqRef);
+        const reqRef = doc(db, "solicitacoes", pendingAdminReqId);
         
-        if (!reqSnap.exists()) { alert("Solicitação não encontrada."); return; }
-        const r = reqSnap.data();
-
-        if (action === 'reject') {
+        if (pendingAdminAction === 'reject') {
             await updateDoc(reqRef, { status: 'rejected' });
-            alert("Solicitação recusada.");
-            return;
-        }
+        } else if (pendingAdminAction === 'approve') {
+            // LÓGICA DE APROVAÇÃO (SWAP/UPDATE)
+            const reqSnap = await getDoc(reqRef);
+            if (!reqSnap.exists()) throw new Error("Solicitação sumiu.");
+            const r = reqSnap.data();
 
-        // --- LÓGICA DE APROVAÇÃO (EXECUTAR A TROCA) ---
-        if (action === 'approve') {
             const docId = `${state.selectedMonthObj.year}-${String(state.selectedMonthObj.month+1).padStart(2,'0')}`;
             const scaleRef = doc(db, "escalas", docId);
             const scaleSnap = await getDoc(scaleRef);
             
             let currentScheduleData = scaleSnap.exists() ? scaleSnap.data() : state.rawSchedule;
             
-            // Garante estrutura Requester
+            // Garante requester
             if(!currentScheduleData[r.requester]) currentScheduleData[r.requester] = {};
             if(!currentScheduleData[r.requester].calculatedSchedule) {
                 currentScheduleData[r.requester].calculatedSchedule = state.scheduleData[r.requester]?.schedule || [];
             }
-
             const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
             while(currentScheduleData[r.requester].calculatedSchedule.length < totalDays) {
                 currentScheduleData[r.requester].calculatedSchedule.push('F');
             }
 
-            // Execução baseada no tipo
             if (r.type === 'troca_turno') {
                 const currentSt = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
                 currentScheduleData[r.requester].calculatedSchedule[r.dayIndex] = (currentSt === 'T') ? 'F' : 'T';
             } else {
-                // Garante estrutura Target
+                // Garante target
                 if(!currentScheduleData[r.target]) currentScheduleData[r.target] = {};
                 if(!currentScheduleData[r.target].calculatedSchedule) {
                      currentScheduleData[r.target].calculatedSchedule = state.scheduleData[r.target]?.schedule || [];
@@ -213,37 +241,38 @@ window.handleAdminRequest = async (reqId, action) => {
                 while(currentScheduleData[r.target].calculatedSchedule.length < totalDays) {
                     currentScheduleData[r.target].calculatedSchedule.push('F');
                 }
-
-                // SWAP
+                // Swap
                 const valA = currentScheduleData[r.requester].calculatedSchedule[r.dayIndex];
                 const valB = currentScheduleData[r.target].calculatedSchedule[r.dayIndex];
-
                 currentScheduleData[r.requester].calculatedSchedule[r.dayIndex] = valB;
                 currentScheduleData[r.target].calculatedSchedule[r.dayIndex] = valA;
             }
 
-            // Salva
             await setDoc(scaleRef, currentScheduleData, { merge: true });
             await updateDoc(reqRef, { status: 'approved' });
-
-            // Atualiza estado local
+            
+            // Update UI
             state.rawSchedule = currentScheduleData;
             const event = new Event('change');
             const el = document.getElementById('employeeSelect');
             if(el) el.dispatchEvent(event);
             if (state.currentDay === (r.dayIndex + 1)) renderDailyView();
-
-            alert("Aprovado! A escala foi atualizada automaticamente.");
         }
+
+        document.getElementById('adminActionModal').classList.add('hidden');
 
     } catch (e) {
         console.error(e);
-        alert("Erro crítico ao aprovar: " + e.message);
+        alert("Erro ao processar: " + e.message);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        pendingAdminReqId = null;
+        pendingAdminAction = null;
     }
-};
+}
 
-
-// --- FUNÇÕES DO MODAL DE EDIÇÃO MANUAL ---
+// --- FUNÇÕES MANTIDAS DO MODAL DE EDIÇÃO MANUAL (LEGADO) ---
 export function handleAdminCellClick(name, dayIndex) {
     if (!state.rawSchedule[name]) state.rawSchedule[name] = {};
     const totalDays = new Date(state.selectedMonthObj.year, state.selectedMonthObj.month+1, 0).getDate();
@@ -289,7 +318,6 @@ function closeAdminModal() {
     document.getElementById('adminEditModal').classList.add('hidden');
 }
 
-// --- FUNÇÕES DE SALVAMENTO ---
 function openSaveModal() {
     document.getElementById('adminSaveModal').classList.remove('hidden');
 }
@@ -356,7 +384,6 @@ function indicateUnsavedChanges() {
     }
 }
 
-// --- VISÃO DIÁRIA ---
 export function renderDailyView() {
     const dateLabel = document.getElementById('currentDateLabel');
     if(dateLabel) {
