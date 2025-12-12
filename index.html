@@ -75,21 +75,19 @@
                 <i class="fas fa-users-cog"></i> Escala & Plantões
             </button>
             
-            <button id="tabRequests" data-tab="requests" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 relative group">
+            <button id="tabRequests" data-tab="requests" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 relative group hidden">
                 <i class="fas fa-exchange-alt group-hover:rotate-180 transition-transform duration-500"></i> Central de Trocas
                 <span id="requestsBadge" class="hidden absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-[10px] text-white font-bold ring-4 ring-[#0F1020] shadow-lg animate-bounce">0</span>
+            </button>
+
+            <button id="tabAdminRequests" data-tab="adminRequests" class="tab-button flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 relative group hidden">
+                <i class="fas fa-gavel group-hover:rotate-12 transition-transform duration-300"></i> Gestão de Trocas
+                <span id="adminRequestsBadge" class="hidden absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-[10px] text-white font-bold ring-4 ring-[#0F1020] shadow-lg animate-bounce">0</span>
             </button>
         </nav>
 
         <main>
             <div id="dailyView" class="tab-content active space-y-6">
-                <div id="adminRequestsPanel" class="hidden cronos-card p-4 rounded-3xl border border-orange-500/30 bg-orange-900/10 mb-6">
-                    <h3 class="text-orange-400 font-bold text-sm uppercase mb-4 flex items-center">
-                        <i class="fas fa-bell mr-2"></i> Solicitações Pendentes (Líder)
-                    </h3>
-                    <div id="adminRequestsList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-                </div>
-
                 <section class="cronos-card p-6 rounded-3xl relative overflow-hidden">
                     <div class="flex flex-col md:flex-row justify-between items-center mb-6">
                         <div><h2 class="text-sm font-bold text-gray-500 uppercase">Status Operacional</h2><span id="currentDateLabel" class="text-2xl font-bold text-white capitalize"></span></div>
@@ -160,7 +158,7 @@
                         </button>
                     </div>
 
-                    <div id="requestsPanel" class="space-y-8"> 
+                    <div id="requestsPanel" class="space-y-8">
                         <div>
                             <h4 class="text-xs font-bold text-gray-500 uppercase mb-4 border-b border-gray-800 pb-2">
                                 <i class="fas fa-inbox mr-2"></i> Pendentes de Aprovação (Para mim)
@@ -176,6 +174,22 @@
                     </div>
                 </section>
             </div>
+
+            <div id="adminRequestsView" class="tab-content hidden space-y-6">
+                <section class="cronos-card p-6 rounded-3xl min-h-[500px]">
+                    <div class="flex justify-between items-center mb-8">
+                        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fas fa-gavel text-amber-500"></i> Aprovações Pendentes
+                        </h3>
+                        <div class="text-xs text-gray-500 font-mono bg-black/20 px-3 py-1 rounded-lg border border-white/5">
+                            Área exclusiva da Liderança
+                        </div>
+                    </div>
+                    
+                    <div id="adminRequestsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        </div>
+                </section>
+            </div>
         </main>
         
         <footer class="mt-16 py-8 border-t border-cronos-border text-center">
@@ -183,123 +197,12 @@
         </footer>
     </div>
 
-    <div id="requestModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-             <div class="p-6 space-y-4">
-                 <div class="flex justify-between items-center mb-2">
-                     <h3 class="text-white font-bold">Solicitar Alteração</h3>
-                     <button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
-                 </div>
-                 
-                 <input type="hidden" id="reqEmployeeName">
-                 <input type="hidden" id="reqDateIndex">
-                 <input type="hidden" id="reqType">
-
-                 <div class="bg-[#0F1020] p-3 rounded-xl border border-[#2E3250] text-center">
-                     <p class="text-[10px] text-gray-400 uppercase font-bold">Data Selecionada</p>
-                     <p id="reqDateDisplay" class="text-xl font-bold text-white font-mono hidden">--/--</p>
-                     <input type="date" id="reqDateManual" class="w-full bg-transparent text-white text-center outline-none text-sm mt-1 hidden">
-                 </div>
-
-                 <div id="swapTargetContainer">
-                     <label class="text-xs font-bold text-gray-400 uppercase ml-1">Trocar com quem?</label>
-                     <select id="reqTargetEmployee" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500">
-                         <option value="">Selecione o colega...</option>
-                     </select>
-                 </div>
-
-                 <div>
-                     <label class="text-xs font-bold text-gray-400 uppercase ml-1">Motivo</label>
-                     <textarea id="reqReason" rows="2" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500" placeholder="Ex: Consulta médica..."></textarea>
-                 </div>
-
-                 <button id="btnSendRequest" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold shadow-lg transition-all">
-                     Enviar Solicitação
-                 </button>
-             </div>
-        </div>
-    </div>
-
-    <div id="requestSentModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-500"></div>
-            
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 rounded-full bg-sky-500/10 flex items-center justify-center mx-auto mb-5 border border-sky-500/20 animate-pulse-slow">
-                    <i class="fas fa-paper-plane text-2xl text-sky-400"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-2">Solicitação Enviada!</h3>
-                <p class="text-sm text-gray-400 mb-8">Seu pedido foi encaminhado com sucesso.</p>
-                <button onclick="document.getElementById('requestSentModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]">OK, Entendi</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="adminEditModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div>
-            <div class="p-6">
-                <div class="text-center mb-6">
-                    <h3 class="text-xl font-bold text-white">Editar Escala</h3>
-                    <p id="adminModalSubtext" class="text-xs text-gray-400 mt-1 uppercase tracking-wider">--</p>
-                </div>
-                <input type="text" id="adminEditInput" class="w-full bg-[#0F1020] border border-cronos-border text-white text-lg font-mono font-bold rounded-xl p-3 outline-none text-center">
-                <input type="hidden" id="adminEditName"><input type="hidden" id="adminEditIndex">
-                <div class="grid grid-cols-2 gap-3 mt-8">
-                    <button id="btnAdminCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Cancelar</button>
-                    <button id="btnAdminConfirm" class="py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-sm">Confirmar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="adminSaveModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-sky-500"></div>
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 border border-indigo-500/20 animate-pulse-slow">
-                    <i class="fas fa-cloud-upload-alt text-2xl text-indigo-400"></i>
-                </div>
-                <h3 class="text-xl font-bold text-white mb-2">Salvar Alterações?</h3>
-                <p class="text-sm text-gray-400 mb-8">Você está prestes a sincronizar as alterações com o banco de dados.</p>
-                <div class="grid grid-cols-2 gap-3">
-                    <button id="btnSaveCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Voltar</button>
-                    <button id="btnSaveConfirm" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm">Sim, Salvar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="successModal" class="hidden fixed inset-0 z-[90] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-green-500/30 rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500"></div>
-            <div class="p-8 text-center">
-                <div class="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-5 border border-green-500/20">
-                    <i class="fas fa-check-circle text-3xl text-green-400"></i>
-                </div>
-                <h3 class="text-2xl font-bold text-white mb-2">Sucesso!</h3>
-                <p id="successMessage" class="text-sm text-gray-400 mb-8">Dados salvos corretamente.</p>
-                <button onclick="document.getElementById('successModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg shadow-green-900/20 transition-all transform hover:scale-[1.02]">OK, Entendi</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="confirmationModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fade-in">
-        <div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100">
-            <div id="confirmModalTopBar" class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-            <div class="p-8 text-center">
-                <div id="confirmModalIconBg" class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 border border-indigo-500/20 animate-pulse-slow">
-                    <i id="confirmModalIcon" class="fas fa-question text-2xl text-indigo-400"></i>
-                </div>
-                <h3 id="confirmModalTitle" class="text-xl font-bold text-white mb-2">Confirmação</h3>
-                <p id="confirmModalText" class="text-sm text-gray-400 mb-8">Tem certeza que deseja realizar esta ação?</p>
-                <div class="grid grid-cols-2 gap-3">
-                    <button onclick="document.getElementById('confirmationModal').classList.add('hidden')" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm transition-colors">Voltar</button>
-                    <button id="btnConfirmAction" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]">Sim, Confirmar</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div id="requestModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"><div class="p-6 space-y-4"><div class="flex justify-between items-center mb-2"><h3 class="text-white font-bold">Solicitar Alteração</h3><button onclick="document.getElementById('requestModal').classList.add('hidden')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button></div><input type="hidden" id="reqEmployeeName"><input type="hidden" id="reqDateIndex"><input type="hidden" id="reqType"><div class="bg-[#0F1020] p-3 rounded-xl border border-[#2E3250] text-center"><p class="text-[10px] text-gray-400 uppercase font-bold">Data Selecionada</p><p id="reqDateDisplay" class="text-xl font-bold text-white font-mono hidden">--/--</p><input type="date" id="reqDateManual" class="w-full bg-transparent text-white text-center outline-none text-sm mt-1 hidden"></div><div id="swapTargetContainer"><label class="text-xs font-bold text-gray-400 uppercase ml-1">Trocar com quem?</label><select id="reqTargetEmployee" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500"><option value="">Selecione o colega...</option></select></div><div><label class="text-xs font-bold text-gray-400 uppercase ml-1">Motivo</label><textarea id="reqReason" rows="2" class="w-full mt-1 bg-[#0F1020] border border-[#2E3250] text-white text-sm rounded-lg p-3 outline-none focus:border-purple-500" placeholder="Ex: Consulta médica..."></textarea></div><button id="btnSendRequest" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold shadow-lg transition-all">Enviar Solicitação</button></div></div></div>
+    <div id="requestSentModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100"><div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sky-500 via-blue-500 to-indigo-500"></div><div class="p-8 text-center"><div class="w-16 h-16 rounded-full bg-sky-500/10 flex items-center justify-center mx-auto mb-5 border border-sky-500/20 animate-pulse-slow"><i class="fas fa-paper-plane text-2xl text-sky-400"></i></div><h3 class="text-xl font-bold text-white mb-2">Solicitação Enviada!</h3><p class="text-sm text-gray-400 mb-8">Seu pedido foi encaminhado com sucesso.</p><button onclick="document.getElementById('requestSentModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]">OK, Entendi</button></div></div></div>
+    <div id="adminEditModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100"><div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500"></div><div class="p-6"><div class="text-center mb-6"><h3 class="text-xl font-bold text-white">Editar Escala</h3><p id="adminModalSubtext" class="text-xs text-gray-400 mt-1 uppercase tracking-wider">--</p></div><input type="text" id="adminEditInput" class="w-full bg-[#0F1020] border border-cronos-border text-white text-lg font-mono font-bold rounded-xl p-3 outline-none text-center"><input type="hidden" id="adminEditName"><input type="hidden" id="adminEditIndex"><div class="grid grid-cols-2 gap-3 mt-8"><button id="btnAdminCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Cancelar</button><button id="btnAdminConfirm" class="py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-sm">Confirmar</button></div></div></div></div>
+    <div id="adminSaveModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100"><div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-sky-500"></div><div class="p-8 text-center"><div class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 border border-indigo-500/20 animate-pulse-slow"><i class="fas fa-cloud-upload-alt text-2xl text-indigo-400"></i></div><h3 class="text-xl font-bold text-white mb-2">Salvar Alterações?</h3><p class="text-sm text-gray-400 mb-8">Você está prestes a sincronizar as alterações com o banco de dados.</p><div class="grid grid-cols-2 gap-3"><button id="btnSaveCancel" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm">Voltar</button><button id="btnSaveConfirm" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm">Sim, Salvar</button></div></div></div></div>
+    <div id="successModal" class="hidden fixed inset-0 z-[90] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-green-500/30 rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100"><div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500"></div><div class="p-8 text-center"><div class="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-5 border border-green-500/20"><i class="fas fa-check-circle text-3xl text-green-400"></i></div><h3 class="text-2xl font-bold text-white mb-2">Sucesso!</h3><p id="successMessage" class="text-sm text-gray-400 mb-8">Dados salvos corretamente.</p><button onclick="document.getElementById('successModal').classList.add('hidden')" class="w-full py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg shadow-green-900/20 transition-all transform hover:scale-[1.02]">OK, Entendi</button></div></div></div>
+    <div id="confirmationModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-fade-in"><div class="bg-[#1A1C2E] border border-cronos-border rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden transform transition-all scale-100"><div id="confirmModalTopBar" class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div><div class="p-8 text-center"><div id="confirmModalIconBg" class="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-5 border border-indigo-500/20 animate-pulse-slow"><i id="confirmModalIcon" class="fas fa-question text-2xl text-indigo-400"></i></div><h3 id="confirmModalTitle" class="text-xl font-bold text-white mb-2">Confirmação</h3><p id="confirmModalText" class="text-sm text-gray-400 mb-8">Tem certeza que deseja realizar esta ação?</p><div class="grid grid-cols-2 gap-3"><button onclick="document.getElementById('confirmationModal').classList.add('hidden')" class="py-3 rounded-xl border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white font-bold text-sm transition-colors">Voltar</button><button id="btnConfirmAction" class="py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold text-sm shadow-lg transition-all transform hover:scale-[1.02]">Sim, Confirmar</button></div></div></div></div>
 
     <script type="module" src="main.js"></script>
 </body>
